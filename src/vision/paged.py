@@ -346,8 +346,12 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
             if union > 0:
                 residuals.append(float((ink ^ reference).sum()) / union)
         page.instability = float(np.mean(residuals)) if residuals else 1.0
-        if page.instability <= config.page_max_instability:
-            page.composite = composite
+        # Kept as a diagnostic, not a gate. Rejecting an unstable composite double
+        # -gates what the classifier already handles: it scores every glyph and
+        # declines the ones it cannot match, so a ghosted region yields nothing
+        # while the clean interior still reads. Gating here as well threw away
+        # whole pages for contamination confined to their margins.
+        page.composite = composite
 
 
 def track_measures(scan_data: Dict, config: Config) -> List[MeasureSpan]:

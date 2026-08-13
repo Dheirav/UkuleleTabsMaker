@@ -362,3 +362,16 @@ def test_track_measures_drops_flickers():
     spans = [(0, 200)] * 40 + [(500, 700)] * 2 + [(200, 400)] * 40
     measures = track_measures(_scan_with_spans(spans), config)
     assert len(measures) == 2  # the 2-frame flicker is below the duration floor
+
+
+def test_unstable_composites_are_kept_for_the_classifier_to_judge():
+    """Instability is a diagnostic, not a gate. Contamination is usually confined
+    to a page's margins while the interior reads perfectly, and the glyph
+    classifier already declines what it cannot match — so rejecting whole pages
+    here discarded clean music to guard a failure already handled downstream."""
+    import inspect
+    from src.vision import paged as paged_module
+
+    source = inspect.getsource(paged_module.composite_pages)
+    assert "page.composite = composite" in source
+    assert "if page.instability <= config.page_max_instability" not in source
