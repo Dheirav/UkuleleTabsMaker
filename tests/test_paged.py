@@ -318,3 +318,47 @@ def test_coverage_is_one_when_every_measure_read():
         DigitDetection(value=2, bbox=(0, 0, 8, 8), confidence=0.9, string_index=0, x_center=150),
     ]
     assert measure_coverage([page])["coverage"] == pytest.approx(1.0)
+
+
+def _scan_with_spans(spans, fps=10.0):
+    return {"spans": spans, "fps": fps, "n": len(spans)}
+
+
+def test_track_measures_is_independent_of_page_segmentation():
+    """Truth keys off this, so it must not move when pages do."""
+    from src.vision.paged import track_measures
+
+    config = Config()
+    # highlight sits on one measure, then jumps to the next
+    spans = [(0, 200)] * 40 + [(200, 400)] * 40
+    measures = track_measures(_scan_with_spans(spans), config)
+    assert len(measures) == 2
+    assert measures[0].x0 == 0 and measures[0].x1 == 200
+    assert measures[1].x0 == 200 and measures[1].x1 == 400
+    assert measures[0].t1 == pytest.approx(4.0)
+
+
+def test_track_measures_spans_a_page_turn():
+    """A measure straddling a page turn is one measure, not two. The per-page
+    tracker splits it, which is why truth cannot be keyed off pages."""
+    from src.vision.paged import attach_measures, track_measures
+
+    config = Config()
+    spans = [(0, 200)] * 80
+    scan = _scan_with_spans(spans)
+    assert len(track_measures(scan, config)) == 1
+
+    # the same highlight, cut across two pages
+    a = Page(index=0, first_frame=0, last_frame=39, t0=0.0, t1=4.0)
+    b = Page(index=1, first_frame=40, last_frame=79, t0=4.0, t1=8.0)
+    attach_measures([a, b], scan, config)
+    assert len(a.measures) + len(b.measures) == 2  # one measure, seen as two
+
+
+def test_track_measures_drops_flickers():
+    from src.vision.paged import track_measures
+
+    config = Config()
+    spans = [(0, 200)] * 40 + [(500, 700)] * 2 + [(200, 400)] * 40
+    measures = track_measures(_scan_with_spans(spans), config)
+    assert len(measures) == 2  # the 2-frame flicker is below the duration floor

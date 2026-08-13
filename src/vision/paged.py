@@ -350,6 +350,36 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
             page.composite = composite
 
 
+def track_measures(scan_data: Dict, config: Config) -> List[MeasureSpan]:
+    """Every measure the player highlighted, over the whole video.
+
+    Deliberately independent of page segmentation: the highlight is drawn by the
+    player, so this sequence is the same whatever the page threshold does. That
+    makes it the one stable axis to key ground truth against, and the only way a
+    measure the reader never saw can be counted as missing rather than silently
+    dropped from both sides of the comparison.
+    """
+    spans, fps = scan_data["spans"], scan_data["fps"]
+    tol = config.highlight_span_tolerance_px
+    out: List[MeasureSpan] = []
+    current, current_start = None, None
+    for i, span in enumerate(spans):
+        same = (current is not None and span is not None
+                and abs(span[0] - current[0]) < tol and abs(span[1] - current[1]) < tol)
+        if same:
+            current = (min(current[0], span[0]), max(current[1], span[1]))
+            continue
+        if current is not None:
+            out.append(MeasureSpan(current[0], current[1], current_start / fps, i / fps))
+        current, current_start = span, i
+    if current is not None:
+        out.append(MeasureSpan(current[0], current[1], current_start / fps,
+                               len(spans) / fps))
+    return [m for m in out
+            if (m.t1 - m.t0) >= config.measure_min_duration_s
+            and (m.x1 - m.x0) >= config.measure_min_width_px]
+
+
 def attach_measures(pages: List[Page], scan_data: Dict, config: Config) -> None:
     """Collapse per-frame highlight boxes into stable measure spans per page."""
     spans, fps = scan_data["spans"], scan_data["fps"]
