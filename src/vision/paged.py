@@ -360,18 +360,28 @@ def track_measures(scan_data: Dict, config: Config) -> List[MeasureSpan]:
     dropped from both sides of the comparison.
     """
     spans, fps = scan_data["spans"], scan_data["fps"]
+    signatures = scan_data.get("signatures")
     tol = config.highlight_span_tolerance_px
     out: List[MeasureSpan] = []
-    current, current_start = None, None
+    current, current_start, start_sig = None, None, None
     for i, span in enumerate(spans):
         same = (current is not None and span is not None
                 and abs(span[0] - current[0]) < tol and abs(span[1] - current[1]) < tol)
+        # The highlight alone does not identify a measure. Players redraw the page
+        # with the highlight in the same place, so successive measures can occupy
+        # identical coordinates; without this, a run of them merges into one block.
+        # The fixed threshold keeps this axis independent of the reader's tunable
+        # page threshold, so retuning segmentation does not move the truth.
+        if same and signatures is not None and start_sig is not None:
+            if signature_distance(signatures[i], start_sig) > config.measure_content_threshold:
+                same = False
         if same:
             current = (min(current[0], span[0]), max(current[1], span[1]))
             continue
         if current is not None:
             out.append(MeasureSpan(current[0], current[1], current_start / fps, i / fps))
         current, current_start = span, i
+        start_sig = signatures[i] if signatures is not None else None
     if current is not None:
         out.append(MeasureSpan(current[0], current[1], current_start / fps,
                                len(spans) / fps))

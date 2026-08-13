@@ -78,6 +78,7 @@ class Config:
     highlight_row_ratio: float = 0.25
     highlight_span_tolerance_px: int = 25
     measure_min_duration_s: float = 0.35
+    measure_content_threshold: float = 0.08
     measure_min_width_px: int = 60
     use_playhead: bool = True
     playhead_min_samples: int = 8
