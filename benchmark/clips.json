@@ -29,5 +29,40 @@
     "id": "digital_circus",
     "yt": "WwWtUS4QX0A",
     "title": "The Amazing Digital Circus - Running The Show"
+  },
+  {
+    "id": "ho_ukealong_greensleeves",
+    "yt": "8W0lJLAQOKg",
+    "channel": "UkeAlong",
+    "title": "Greensleeves chord melody play-along",
+    "heldout": true
+  },
+  {
+    "id": "ho_anbu_rolling",
+    "yt": "oDGo0LDH9UE",
+    "channel": "AnbuPractice",
+    "title": "Tab with music play along",
+    "heldout": true
+  },
+  {
+    "id": "ho_easytabs_faded",
+    "yt": "KrJ-u0YgOTg",
+    "channel": "Ukulele Easy Tabs",
+    "title": "Beginner tabs with playthrough",
+    "heldout": true
+  },
+  {
+    "id": "ho_easytabs_perfect",
+    "yt": "Y9r3Rr8d8vA",
+    "channel": "Ukulele Easy Tabs",
+    "title": "Beginner tabs with playthrough",
+    "heldout": true
+  },
+  {
+    "id": "ho_cheats_wonderful",
+    "yt": "mYeXueH_X5Q",
+    "channel": "Ukulele Cheats",
+    "title": "Fingerstyle play along with tabs",
+    "heldout": true
   }
 ]

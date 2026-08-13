@@ -1,7 +1,7 @@
 """Measure-keyed ground truth for the paged tab reader.
 
   python scripts/measure_truth.py dump  [id ...]   # one crop per highlighted measure
-  python scripts/measure_truth.py stub  [id ...]   # seed truth from detections
+  python scripts/measure_truth.py stub  [--blank] [id ...]   # seed truth to label
   python scripts/measure_truth.py score [id ...]   # score against benchmark/measures/
 
 Truth is keyed to the measures the player highlighted, not to page indices. The
@@ -161,7 +161,19 @@ def cmd_dump(clips, config):
               f" -> {out_dir}")
 
 
-def cmd_stub(clips, config):
+def cmd_stub(clips, config, blank=False):
+    """Seed a truth file.
+
+    Seeding from detections turns labelling into a review of the reader's own
+    answer. That is biased in the direction that matters least: a misread note is
+    visible on the page and gets caught, but a note the reader never emitted
+    leaves nothing on screen to prompt you. Almost every error found so far has
+    been a deletion, which is exactly the case that review is worst at catching.
+
+    --blank writes empty measures instead, so notes are transcribed from the crops
+    with no sight of what the system produced. Required for held-out clips, where
+    the labels have to be independent evidence rather than a graded homework.
+    """
     os.makedirs(TRUTH, exist_ok=True)
     for clip in clips:
         src = os.path.join(CROPS, clip["id"], "measures.json")
@@ -172,12 +184,18 @@ def cmd_stub(clips, config):
         if os.path.exists(dst):
             print(f"  {clip['id']}: truth exists, not overwriting")
             continue
+        if clip.get("heldout") and not blank:
+            print(f"  {clip['id']}: held out — use 'stub --blank', labels must not be "
+                  f"seeded from detections")
+            continue
         meta = json.load(open(src))["measures"]
         json.dump({"verified": False, "schema": "measures/1",
+                   "blind": bool(blank), "heldout": bool(clip.get("heldout")),
                    "measures": [{"index": m["index"], "t0": m["t0"], "t1": m["t1"],
-                                 "notes": m["detected"]} for m in meta]},
+                                 "notes": [] if blank else m["detected"]} for m in meta]},
                   open(dst, "w"), indent=2)
-        print(f"  {clip['id']}: stub with {len(meta)} measures — check each crop by eye")
+        how = "blank (blind)" if blank else "seeded from detections"
+        print(f"  {clip['id']}: {len(meta)} measures, {how}")
 
 
 def align(truth: List[Tuple], hyp: List[Tuple]) -> Dict[str, int]:
@@ -266,10 +284,15 @@ def main():
         print(__doc__)
         raise SystemExit(2)
     command, argv = sys.argv[1], sys.argv[2:]
+    blank = "--blank" in argv
+    argv = [a for a in argv if a != "--blank"]
     clips = load_clips(argv)
     if not clips:
         raise SystemExit("no clips available; run scripts/fetch_benchmark.py")
-    {"dump": cmd_dump, "stub": cmd_stub, "score": cmd_score}[command](clips, Config())
+    if command == "stub":
+        cmd_stub(clips, Config(), blank=blank)
+    else:
+        {"dump": cmd_dump, "score": cmd_score}[command](clips, Config())
 
 
 if __name__ == "__main__":

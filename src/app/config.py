@@ -58,7 +58,7 @@ class Config:
     paged_motion_probes: int = 30
     paged_motion_pair_frames: int = 3
     paged_max_scroll_px_s: float = 4.0
-    page_change_threshold: float = 0.30
+    page_change_threshold: float = 0.10
     page_profile_bins: int = 512
     page_confirm_frames: int = 3
     page_cut_merge_frames: int = 4
