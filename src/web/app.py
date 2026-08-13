@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import threading
@@ -10,7 +11,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 
 from src.app.config import Config
 from src.app.main import run_pipeline
-from src.output.text import render_text_tab
+from src.output.text import build_systems, render_text_tab
 
 
 app = Flask(__name__)
@@ -59,6 +60,16 @@ def _progress(job_id: str, stage: str, value: float) -> None:
     JOBS[job_id]["progress"] = value
 
 
+def _read_report(output_dir: str) -> dict:
+    """Pipeline stats, written alongside the tab outputs."""
+    path = os.path.join(output_dir, "sampling_report.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+
 def _worker(job_id: str, url: str, output_dir: str) -> None:
     config = Config(output_dir=output_dir)
     try:
@@ -66,6 +77,8 @@ def _worker(job_id: str, url: str, output_dir: str) -> None:
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["sheet"] = sheet
         JOBS[job_id]["text"] = render_text_tab(sheet, config)
+        JOBS[job_id]["systems"] = build_systems(sheet, config)
+        JOBS[job_id]["report"] = _read_report(output_dir)
     except Exception as exc:
         JOBS[job_id]["status"] = "error"
         JOBS[job_id]["error"] = str(exc)

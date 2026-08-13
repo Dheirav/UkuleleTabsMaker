@@ -1,72 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ukulele Tabs Maker</title>
-  <style>
-    :root {
-      --bg: #f3efe7;
-      --ink: #1f1b16;
-      --accent: #2a6f6b;
-      --paper: #fffaf2;
-    }
-    body {
-      margin: 0;
-      font-family: "Georgia", "Times New Roman", serif;
-      background: linear-gradient(120deg, #f7f0e1, #e9f3f1);
-      color: var(--ink);
-    }
-    .wrap {
-      max-width: 860px;
-      margin: 0 auto;
-      padding: 64px 24px;
-    }
-    .card {
-      background: var(--paper);
-      border: 1px solid #e1d8c8;
-      padding: 28px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
-    }
-    h1 {
-      margin-top: 0;
-      letter-spacing: 0.5px;
-    }
-    input[type="text"] {
-      width: 100%;
-      padding: 12px 14px;
-      border: 1px solid #c9bca6;
-      font-size: 16px;
-    }
-    button {
-      margin-top: 16px;
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .hint {
-      color: #5f554a;
-      margin-top: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Ukulele Tabs Maker</h1>
-      <p>Extract tab sheets from scrolling tab tutorials.</p>
-      <form action="/process" method="post">
-        <input type="text" name="url" placeholder="Paste YouTube URL" required />
-        <button type="submit">Process</button>
-      </form>
-      {% if error %}
-        <div class="hint" style="color: #a33;">{{ error }}</div>
-      {% endif %}
-      <div class="hint">Supports scrolling or static tab tutorials. Processing can take a few minutes.</div>
-    </div>
+{% extends "base.html" %}
+
+{% block content %}
+  {% if error %}
+    <div class="banner bad"><strong>{{ error }}</strong></div>
+  {% endif %}
+
+  <div class="card">
+    <form action="/process" method="post">
+      <label for="url" style="display:block;margin-bottom:8px;font-weight:600">YouTube URL</label>
+      <input id="url" type="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required />
+      <div style="margin-top:14px"><button type="submit">Make tab sheet</button></div>
+    </form>
   </div>
-</body>
-</html>
+
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem">What works</h2>
+    <p class="muted" style="margin:0 0 10px">
+      This reads tab notation off the video frames — it does not listen to the audio.
+      It needs a tutorial that <b>shows the tab on screen</b>, the kind produced by a
+      tab player. Most ukulele tutorials that display tabs are of this kind.
+    </p>
+    <p class="muted" style="margin:0">
+      A tutorial where someone only plays and talks, with no tab on screen, will not
+      produce a useful sheet. Processing takes a few minutes, and the result page
+      reports how much of the piece was actually captured.
+    </p>
+  </div>
+{% endblock %}

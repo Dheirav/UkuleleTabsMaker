@@ -292,18 +292,42 @@ def segment_pages(scan_data: Dict, config: Config) -> List[Page]:
 def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
                     config: Config) -> None:
     """Median over each page's frames removes the moving playhead and highlight."""
-    cap = cv2.VideoCapture(video_path)
     y0, y1 = scan_data["y0"], scan_data["y1"]
+
+    # Sample indices per page, gathered in one sequential pass. Seeking to an
+    # arbitrary frame makes the decoder restart from the preceding keyframe, so
+    # per-page seeking costs far more than simply decoding the file in order.
+    wanted: Dict[int, List[Page]] = {}
     for page in pages:
         count = page.last_frame - page.first_frame + 1
         idxs = np.linspace(page.first_frame, page.last_frame,
                            min(count, config.page_composite_samples)).astype(int)
-        stack = []
         for i in idxs:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
-            ret, frame = cap.read()
-            if ret:
-                stack.append(frame[y0:y1] if y1 > y0 else frame)
+            wanted.setdefault(int(i), []).append(page)
+
+    cap = cv2.VideoCapture(video_path)
+    # Pages are contiguous and ordered, so a page can be finished and freed as
+    # soon as the read position passes it: only one page's frames are ever held.
+    buffers: Dict[int, List[np.ndarray]] = {}
+    pending = sorted(pages, key=lambda p: p.first_frame)
+    done: List[Tuple[Page, List[np.ndarray]]] = []
+    idx = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        for page in wanted.get(idx, ()):
+            strip = frame[y0:y1] if y1 > y0 else frame
+            buffers.setdefault(page.index, []).append(strip.copy())
+        while pending and pending[0].last_frame < idx:
+            finished = pending.pop(0)
+            done.append((finished, buffers.pop(finished.index, [])))
+        idx += 1
+    cap.release()
+    for page in pending:
+        done.append((page, buffers.pop(page.index, [])))
+
+    for page, stack in done:
         if not stack:
             continue
         composite = np.median(np.stack(stack), axis=0).astype(np.uint8)
@@ -324,7 +348,6 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
         page.instability = float(np.mean(residuals)) if residuals else 1.0
         if page.instability <= config.page_max_instability:
             page.composite = composite
-    cap.release()
 
 
 def attach_measures(pages: List[Page], scan_data: Dict, config: Config) -> None:

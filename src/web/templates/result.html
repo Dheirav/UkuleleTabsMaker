@@ -1,125 +1,151 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tab Results</title>
-  <style>
-    body {
-      font-family: "Georgia", "Times New Roman", serif;
-      background: #f5f0e6;
-      margin: 0;
-      color: #1f1b16;
-    }
-    .wrap {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
-    .status {
-      padding: 16px;
-      background: #fffaf2;
-      border: 1px solid #e1d8c8;
-    }
-    .tabs {
-      white-space: pre;
-      background: #fffaf2;
-      padding: 16px;
-      border: 1px solid #e1d8c8;
-      margin-top: 20px;
-    }
-    .downloads a {
-      margin-right: 12px;
-      color: #2a6f6b;
-    }
-    .progress {
-      height: 10px;
-      background: #e9e1d1;
-      margin-top: 10px;
-    }
-    .bar {
-      height: 10px;
-      background: #2a6f6b;
-      width: 0;
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="status">
-      <div id="status-text">Processing...</div>
-      <div class="progress"><div id="bar" class="bar"></div></div>
-    </div>
+{% extends "base.html" %}
+{% block title %}Tab sheet{% endblock %}
+{% block subtitle %}
+  {%- if job.status == "done" -%}Your tab sheet is ready.
+  {%- elif job.status == "error" -%}Something went wrong.
+  {%- else -%}Reading the video…{%- endif -%}
+{% endblock %}
 
-    {% if job.status == "done" %}
-      <div class="downloads">
-        <a href="/download/{{ job_id }}/txt">Download TXT</a>
-        <a href="/download/{{ job_id }}/pdf">Download PDF</a>
-        <a href="/download/{{ job_id }}/json">Download JSON</a>
+{% block content %}
+{% if job.status not in ["done", "error"] %}
+  <div class="card">
+    <div id="status-text" style="margin-bottom:10px">Starting…</div>
+    <div class="progress"><div id="bar"></div></div>
+    <p class="muted" style="margin:12px 0 0">
+      This takes a few minutes. The page updates itself.
+    </p>
+  </div>
+{% endif %}
+
+{% if job.status == "error" %}
+  <div class="banner bad">
+    <strong>Processing failed</strong>
+    {{ job.error }}
+  </div>
+  <a class="btn" href="/">Try another video</a>
+{% endif %}
+
+{% if job.status == "done" %}
+  {% set report = job.report or {} %}
+  {% set coverage = report.get("coverage") %}
+
+  {% if coverage is not none %}
+    {% set pct = (coverage * 100) | round(0) | int %}
+    {% if coverage >= 0.85 %}
+      <div class="banner ok">
+        <strong>Captured {{ pct }}% of the measures found in the video</strong>
+        This sheet should be close to complete.
       </div>
-      <div class="status" style="margin-top: 16px;">
-        <div>Playback (no audio)</div>
-        <input id="time" type="range" min="0" max="1" step="0.01" value="0" style="width: 100%;" />
-        <div id="time-label">0.00s</div>
-        <div id="notes"></div>
+    {% elif coverage >= 0.6 %}
+      <div class="banner warn">
+        <strong>Captured {{ pct }}% of the measures found in the video</strong>
+        Some passages are missing — check the sheet against the video before relying on it.
       </div>
-      <div class="tabs">{{ job.text }}</div>
-    {% elif job.status == "error" %}
-      <div class="tabs">Error: {{ job.error }}</div>
+    {% else %}
+      <div class="banner bad">
+        <strong>Only captured {{ pct }}% of the measures found in the video</strong>
+        Most of this piece is missing. The notes shown are likely correct, but large
+        sections were not read. Treat this sheet as a partial draft.
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="card">
+    <div class="facts">
+      {% if report.get("mode") %}<span><b>{{ report.mode }}</b> tab</span>{% endif %}
+      {% if report.get("pages") %}<span><b>{{ report.pages | int }}</b> pages</span>{% endif %}
+      {% if report.get("measures_highlighted") %}
+        <span><b>{{ report.measures_with_notes | int }}</b> of
+              <b>{{ report.measures_highlighted | int }}</b> measures read</span>
+      {% endif %}
+      <span><b>{{ job.sheet.notes | length }}</b> notes</span>
+      {% if job.sheet.metadata.get("font") %}
+        <span>font <b>{{ job.sheet.metadata.font }}</b></span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="actions" style="margin-bottom:18px">
+    <a class="btn" href="/download/{{ job_id }}/txt">Download TXT</a>
+    <a class="btn secondary" href="/download/{{ job_id }}/pdf">PDF</a>
+    <a class="btn secondary" href="/download/{{ job_id }}/json">JSON</a>
+    <a class="btn secondary" href="/">New video</a>
+  </div>
+
+  <div class="sheet">
+    {% if job.systems %}
+      {% for system in job.systems %}
+        <div class="system">{% for label, line in system %}<span class="label">{{ "%2s"|format(label) }}|</span>{{ line }}
+{% endfor %}</div>
+      {% endfor %}
+    {% else %}
+      <p class="muted" style="margin:0">No notes were detected in this video.</p>
     {% endif %}
   </div>
 
-  <script>
-    const jobId = "{{ job_id }}";
-    {% if job.status not in ["done", "error"] %}
-    async function poll() {
+  {% if job.sheet.notes %}
+    <div class="card" style="margin-top:18px">
+      <h2 style="margin-top:0;font-size:1rem">Scrub through the notes</h2>
+      <input id="time" type="range" min="0" max="1" step="0.01" value="0" style="width:100%" />
+      <div class="muted" id="time-label" style="margin:6px 0 10px">0.00s</div>
+      <table class="notes"><tbody id="notes"></tbody></table>
+    </div>
+  {% endif %}
+{% endif %}
+
+<script>
+  const jobId = "{{ job_id }}";
+  const TUNING = ["G", "C", "E", "A"];
+
+  {% if job.status not in ["done", "error"] %}
+  const STAGES = {
+    init: "Starting", download: "Downloading video", scanning: "Scanning frames",
+    pages: "Finding pages", recognise: "Reading notation",
+    reconstruct: "Working out timing", output: "Writing files", done: "Done"
+  };
+  async function poll() {
+    try {
       const res = await fetch(`/status/${jobId}`);
       if (!res.ok) return;
       const data = await res.json();
-      const statusText = document.getElementById("status-text");
-      const bar = document.getElementById("bar");
-      if (data.status === "done") {
-        statusText.textContent = "Complete";
-        bar.style.width = "100%";
-        window.location.reload();
-        return;
-      }
-      if (data.status === "error") {
-        statusText.textContent = "Error";
-        bar.style.width = "100%";
-        return;
-      }
-      statusText.textContent = `${data.stage} (${Math.round(data.progress * 100)}%)`;
-      bar.style.width = `${Math.round(data.progress * 100)}%`;
-      setTimeout(poll, 1200);
-    }
-    poll();
-    {% endif %}
+      if (data.status === "done" || data.status === "error") { window.location.reload(); return; }
+      const pct = Math.round((data.progress || 0) * 100);
+      document.getElementById("status-text").textContent =
+        `${STAGES[data.stage] || data.stage} — ${pct}%`;
+      document.getElementById("bar").style.width = `${pct}%`;
+    } catch (err) { /* keep polling */ }
+    setTimeout(poll, 1200);
+  }
+  poll();
+  {% endif %}
 
-    async function loadNotes() {
-      try {
-        const res = await fetch(`/download/${jobId}/json`);
-        if (!res.ok) return;
-        const data = await res.json();
+  const slider = document.getElementById("time");
+  if (slider) {
+    fetch(`/download/${jobId}/json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
         const notes = data.notes || [];
+        if (!notes.length) return;
         const maxTime = notes.reduce((m, n) => Math.max(m, n.time), 0);
-        const slider = document.getElementById("time");
         const label = document.getElementById("time-label");
-        const container = document.getElementById("notes");
+        const body = document.getElementById("notes");
         slider.max = maxTime.toFixed(2);
-        slider.addEventListener("input", () => {
+        const render = () => {
           const t = parseFloat(slider.value);
-          label.textContent = `${t.toFixed(2)}s`;
-          const active = notes.filter((n) => Math.abs(n.time - t) < 0.15);
-          container.textContent = active.map((n) => `string ${n.string_index} fret ${n.fret}`).join(" | ") || "...";
-        });
-      } catch (err) {
-        console.log(err);
-      }
-    }
-    if (document.querySelector(".downloads")) {
-      loadNotes();
-    }
-  </script>
-</body>
-</html>
+          label.textContent = `${t.toFixed(2)}s of ${maxTime.toFixed(2)}s`;
+          const active = notes.filter((n) => Math.abs(n.time - t) < 0.2);
+          body.innerHTML = active.length
+            ? active.map((n) =>
+                `<tr><td>${TUNING[n.string_index] ?? n.string_index} string</td>` +
+                `<td>fret <b>${n.fret}</b></td>` +
+                `<td class="muted">${n.time.toFixed(2)}s</td></tr>`).join("")
+            : `<tr><td class="muted">nothing sounding here</td></tr>`;
+        };
+        slider.addEventListener("input", render);
+        render();
+      })
+      .catch(() => {});
+  }
+</script>
+{% endblock %}
