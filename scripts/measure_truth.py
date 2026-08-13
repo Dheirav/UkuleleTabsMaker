@@ -108,12 +108,19 @@ def crop_for(video_path, scan, pages, measure, config):
             return None
         y0, y1 = scan["y0"], scan["y1"]
         source = frame[y0:y1] if y1 > y0 else frame
-    pad = 12
+    pad = 40
     x0 = max(int(measure.x0) - pad, 0)
     x1 = min(int(measure.x1) + pad, source.shape[1])
     if x1 <= x0:
         return None
-    return source[:, x0:x1], page is not None
+    crop = source[:, x0:x1].copy()
+    # Mark the measure's own boundaries. Padding pulls in neighbouring notes, and
+    # judging the edge from a faint highlight tint is how mislabelled truth gets
+    # written; only what lies between these two lines belongs to this measure.
+    for edge in (int(measure.x0) - x0, int(measure.x1) - x0):
+        if 0 <= edge < crop.shape[1]:
+            cv2.line(crop, (edge, 0), (edge, crop.shape[0]), (200, 0, 200), 2)
+    return crop, page is not None
 
 
 def cmd_dump(clips, config):

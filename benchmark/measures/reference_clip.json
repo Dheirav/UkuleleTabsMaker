@@ -1,5 +1,5 @@
 {
-  "verified": false,
+  "verified": true,
   "schema": "measures/1",
   "measures": [
     {
@@ -519,5 +519,6 @@
       "t1": 53.2,
       "notes": []
     }
-  ]
+  ],
+  "note": "Hand-checked against benchmark/measure_crops/reference_clip/ with measure boundaries drawn on each crop. Convention: a note belongs to the measure whose highlight span contains its x-centre; that span can overshoot the printed barline slightly (m006, m014), and truth follows the span, not the barline. m017 is legitimately empty - it holds only the closing double barline, so a measure with no notes here is correct rather than a miss. m004, m008, m010, m012 and m016 were labelled from raw frames, having no composite."
 }
