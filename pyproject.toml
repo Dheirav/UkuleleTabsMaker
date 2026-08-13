@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ukulele-tabs-maker"
+version = "0.1.0"
+description = "Extract ukulele tab sheets from scrolling tab tutorial videos"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "yt-dlp==2026.07.04",
+    "opencv-python==4.10.0.84",
+    "numpy==1.26.4",
+    "pytesseract==0.3.10",
+    "flask==3.0.3",
+    "reportlab==4.2.2",
+    "pillow==10.4.0",
+    "pytest==8.2.2",
+    "torch==2.3.1",
+    "torchvision==0.18.1",
+]
+
+[project.scripts]
+ukulele-tabs = "src.app.main:run_cli"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"

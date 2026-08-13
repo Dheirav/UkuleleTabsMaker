@@ -1,0 +1,33 @@
+[
+  {
+    "id": "reference_clip",
+    "yt": null,
+    "title": "Reference clip (local, hand-verified)",
+    "local": true
+  },
+  {
+    "id": "verity_minecraft",
+    "yt": "PLIc4VjhxxU",
+    "title": "Verity's Theme - Minecraft"
+  },
+  {
+    "id": "homestuck_ending",
+    "yt": "WZfK3YCk19g",
+    "title": "Homestuck - Animated Pilot Ending Theme"
+  },
+  {
+    "id": "silksong_sherma",
+    "yt": "0e5zxrfjaBE",
+    "title": "Hollow Knight Silksong - Sherma Song"
+  },
+  {
+    "id": "danganronpa_kyoko",
+    "yt": "CmsrTJNKqq8",
+    "title": "Danganronpa - Kyoko Kirigiri"
+  },
+  {
+    "id": "digital_circus",
+    "yt": "WwWtUS4QX0A",
+    "title": "The Amazing Digital Circus - Running The Show"
+  }
+]

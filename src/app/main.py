@@ -1,0 +1,252 @@
+import argparse
+import json
+import logging
+import os
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
+from typing import Callable, Dict, List, Optional
+
+from src.app.config import Config
+from src.models.schema import FrameSample, TabSheet
+from src.utils.logging import setup_logging
+from src.video.downloader import download_youtube
+from src.video.sampler import sample_frames
+from src.vision.region import detect_tab_region
+from src.vision.lines import detect_string_lines, detect_bar_lines, consensus_staff, apply_consensus_staff
+from src.vision.digits import detect_digits, detect_tab_mode
+from src.parsing.reconstruct import reconstruct_notes, reconstruct_chunked_notes
+from src.parsing.parser import parse_measures
+from src.vision import paged
+from src.vision.glyphs import GlyphClassifier
+from src.vision.page_digits import collect_sample_glyphs, read_page
+from src.parsing.paged_tab import measure_coverage, notes_from_pages
+from src.output.text import render_text_tab
+from src.output.json import write_json
+from src.output.pdf import write_pdf
+
+
+logger = logging.getLogger(__name__)
+
+
+def download_video(url: str, config: Config) -> str:
+    return download_youtube(url, config.output_dir)
+
+
+def sample_video(video_path: str, config: Config) -> List[FrameSample]:
+    frames, _ = sample_frames(video_path, config, return_stats=True)
+    return frames
+
+
+def _extract_structure(frame: FrameSample, config: Config) -> tuple:
+    region = detect_tab_region(frame.image, config)
+    x, y, w, h = region.bbox
+    roi = frame.image[y : y + h, x : x + w]
+    return region, detect_string_lines(roi, config)
+
+
+def _extract_frame(item: tuple, config: Config) -> dict:
+    frame, region, string_lines = item
+    x, y, w, h = region.bbox
+    roi = frame.image[y : y + h, x : x + w]
+    bar_lines = detect_bar_lines(roi, config)
+    mode = detect_tab_mode(roi, string_lines, config)
+    digits = detect_digits(roi, string_lines, config, force_single=(mode == "single"))
+    return {
+        "timestamp": frame.timestamp,
+        "region": region,
+        "string_lines": string_lines,
+        "bar_lines": bar_lines,
+        "digits": digits,
+        "mode": mode,
+    }
+
+
+def _run_parallel(func: Callable, items: list, workers: int) -> list:
+    if workers > 1 and len(items) > 1:
+        try:
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                return list(pool.map(func, items))
+        except Exception as exc:
+            logger.warning("parallel frame extraction failed (%s); falling back to sequential", exc)
+    return [func(item) for item in items]
+
+
+def extract_tab_frames(frames: List[FrameSample], config: Config) -> List[dict]:
+    workers = config.num_workers
+    if workers <= 0:
+        workers = os.cpu_count() or 1
+
+    structures = _run_parallel(partial(_extract_structure, config=config), frames, workers)
+    abs_line_lists = [
+        [line + region.bbox[1] for line in lines] for region, lines in structures
+    ]
+    consensus = consensus_staff(abs_line_lists, config) if len(frames) > 1 else []
+    if consensus:
+        logger.info("using consensus staff lines %s across %d frames", consensus, len(frames))
+
+    items = [
+        (frame, region, apply_consensus_staff(lines, region.bbox[1], consensus))
+        for frame, (region, lines) in zip(frames, structures)
+    ]
+    return _run_parallel(partial(_extract_frame, config=config), items, workers)
+
+
+def reconstruct_sheet(
+    tab_frames: List[dict],
+    config: Config,
+    source: str,
+) -> TabSheet:
+    modes = [f.get("mode", "multi") for f in tab_frames]
+    single = modes and modes.count("single") >= max(1, len(modes) // 2)
+    tab_mode = "single" if single else "multi"
+    if single:
+        reconstruction = reconstruct_chunked_notes(tab_frames, config)
+    else:
+        reconstruction = reconstruct_notes(tab_frames, config)
+    measures = parse_measures(reconstruction.notes, reconstruction.bar_times)
+    return TabSheet(
+        notes=reconstruction.notes,
+        measures=measures,
+        metadata={"source_url": source, "tab_mode": tab_mode},
+    )
+
+
+def write_outputs(
+    sheet: TabSheet,
+    config: Config,
+    sampling_stats: Optional[Dict] = None,
+) -> Dict[str, str]:
+    os.makedirs(config.output_dir, exist_ok=True)
+    if sampling_stats:
+        report_path = os.path.join(config.output_dir, "sampling_report.json")
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(sampling_stats, f, indent=2)
+    text = render_text_tab(sheet, config)
+    json_path = os.path.join(config.output_dir, "tabs.json")
+    pdf_path = os.path.join(config.output_dir, "tabs.pdf")
+    txt_path = os.path.join(config.output_dir, "tabs.txt")
+    write_json(sheet, json_path)
+    write_pdf(text, pdf_path)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return {"txt": txt_path, "json": json_path, "pdf": pdf_path}
+
+
+def run_paged_pipeline(
+    video_path: str,
+    config: Config,
+    source: str,
+    progress_cb: Optional[Callable[[str, float], None]] = None,
+) -> tuple:
+    """Static paged tab: read each page once, take timing from the player's own
+    highlight and playhead rather than estimating scroll speed."""
+    if progress_cb:
+        progress_cb("scanning", 0.2)
+    scan_data = paged.scan(video_path, config)
+
+    pages = paged.segment_pages(scan_data, config)
+    logger.info("paged mode: %d pages over %.1fs", len(pages), scan_data["n"] / scan_data["fps"])
+    if progress_cb:
+        progress_cb("pages", 0.4)
+    paged.composite_pages(video_path, pages, scan_data, config)
+    paged.attach_measures(pages, scan_data, config)
+
+    if progress_cb:
+        progress_cb("recognise", 0.6)
+    classifier = GlyphClassifier(collect_sample_glyphs(pages, config))
+    logger.info("glyph font: %s (fit %.3f)",
+                os.path.basename(classifier.font_path or "none"), classifier.fit)
+    for page in pages:
+        if page.composite is not None:
+            page.digits = read_page(page.composite, classifier, config)
+
+    if progress_cb:
+        progress_cb("reconstruct", 0.8)
+    reconstruction = notes_from_pages(pages, scan_data, config)
+    measures = parse_measures(reconstruction.notes, reconstruction.bar_times)
+    sheet = TabSheet(
+        notes=reconstruction.notes,
+        measures=measures,
+        metadata={
+            "source_url": source,
+            "tab_mode": "paged",
+            "pages": str(len(pages)),
+            "font": os.path.basename(classifier.font_path or "none"),
+        },
+    )
+    coverage = measure_coverage(pages)
+    logger.info("coverage: %d/%d highlighted measures produced notes (%.1f%%)",
+                int(coverage["measures_with_notes"]), int(coverage["measures_highlighted"]),
+                100.0 * coverage["coverage"])
+    stats = {
+        "mode": "paged",
+        "pages": float(len(pages)),
+        "frames": float(scan_data["n"]),
+        "fps": float(scan_data["fps"]),
+        "playhead_frames": float(sum(1 for h in scan_data["heads"] if h >= 0)),
+        "measures_tracked": float(sum(len(p.measures) for p in pages)),
+        "glyph_font_fit": float(classifier.fit),
+        **coverage,
+    }
+    return sheet, stats
+
+
+def run_pipeline(
+    url: str,
+    config: Config,
+    progress_cb: Optional[Callable[[str, float], None]] = None,
+    video_path: Optional[str] = None,
+) -> TabSheet:
+    if not video_path:
+        if progress_cb:
+            progress_cb("download", 0.05)
+        video_path = download_video(url, config)
+
+    source = url if url else (video_path or "local")
+    if paged.is_paged(video_path, config):
+        sheet, stats = run_paged_pipeline(video_path, config, source, progress_cb)
+        if progress_cb:
+            progress_cb("output", 0.9)
+        write_outputs(sheet, config, stats)
+        if progress_cb:
+            progress_cb("done", 1.0)
+        return sheet
+
+    if progress_cb:
+        progress_cb("sampling", 0.15)
+    frames, sampling_stats = sample_frames(video_path, config, return_stats=True)
+
+    if progress_cb:
+        progress_cb("vision", 0.35)
+    tab_frames = extract_tab_frames(frames, config)
+
+    if progress_cb:
+        progress_cb("reconstruct", 0.6)
+    sheet = reconstruct_sheet(tab_frames, config, source)
+
+    if progress_cb:
+        progress_cb("output", 0.85)
+    write_outputs(sheet, config, sampling_stats)
+
+    if progress_cb:
+        progress_cb("done", 1.0)
+    return sheet
+
+
+def run_cli() -> None:
+    setup_logging()
+    parser = argparse.ArgumentParser(description="Ukulele tab extractor")
+    parser.add_argument("url", nargs="?", default="", help="YouTube URL")
+    parser.add_argument("--output", default="./outputs", help="Output directory")
+    parser.add_argument("--video-path", default="", help="Use an existing video file")
+    parser.add_argument("--save-frames", action="store_true", help="Save sampled frames for debugging")
+    parser.add_argument("--workers", type=int, default=0, help="Number of vision worker processes (0 = auto)")
+    args = parser.parse_args()
+
+    config = Config(output_dir=args.output, num_workers=args.workers)
+    if args.save_frames:
+        config.save_sampled_frames = True
+    if not args.url and not args.video_path:
+        raise SystemExit("Provide a YouTube URL or --video-path")
+    sheet = run_pipeline(args.url, config, video_path=args.video_path or None)
+    print(json.dumps({"notes": len(sheet.notes), "measures": len(sheet.measures)}))

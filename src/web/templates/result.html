@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tab Results</title>
+  <style>
+    body {
+      font-family: "Georgia", "Times New Roman", serif;
+      background: #f5f0e6;
+      margin: 0;
+      color: #1f1b16;
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    .status {
+      padding: 16px;
+      background: #fffaf2;
+      border: 1px solid #e1d8c8;
+    }
+    .tabs {
+      white-space: pre;
+      background: #fffaf2;
+      padding: 16px;
+      border: 1px solid #e1d8c8;
+      margin-top: 20px;
+    }
+    .downloads a {
+      margin-right: 12px;
+      color: #2a6f6b;
+    }
+    .progress {
+      height: 10px;
+      background: #e9e1d1;
+      margin-top: 10px;
+    }
+    .bar {
+      height: 10px;
+      background: #2a6f6b;
+      width: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="status">
+      <div id="status-text">Processing...</div>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+    </div>
+
+    {% if job.status == "done" %}
+      <div class="downloads">
+        <a href="/download/{{ job_id }}/txt">Download TXT</a>
+        <a href="/download/{{ job_id }}/pdf">Download PDF</a>
+        <a href="/download/{{ job_id }}/json">Download JSON</a>
+      </div>
+      <div class="status" style="margin-top: 16px;">
+        <div>Playback (no audio)</div>
+        <input id="time" type="range" min="0" max="1" step="0.01" value="0" style="width: 100%;" />
+        <div id="time-label">0.00s</div>
+        <div id="notes"></div>
+      </div>
+      <div class="tabs">{{ job.text }}</div>
+    {% elif job.status == "error" %}
+      <div class="tabs">Error: {{ job.error }}</div>
+    {% endif %}
+  </div>
+
+  <script>
+    const jobId = "{{ job_id }}";
+    {% if job.status not in ["done", "error"] %}
+    async function poll() {
+      const res = await fetch(`/status/${jobId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const statusText = document.getElementById("status-text");
+      const bar = document.getElementById("bar");
+      if (data.status === "done") {
+        statusText.textContent = "Complete";
+        bar.style.width = "100%";
+        window.location.reload();
+        return;
+      }
+      if (data.status === "error") {
+        statusText.textContent = "Error";
+        bar.style.width = "100%";
+        return;
+      }
+      statusText.textContent = `${data.stage} (${Math.round(data.progress * 100)}%)`;
+      bar.style.width = `${Math.round(data.progress * 100)}%`;
+      setTimeout(poll, 1200);
+    }
+    poll();
+    {% endif %}
+
+    async function loadNotes() {
+      try {
+        const res = await fetch(`/download/${jobId}/json`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const notes = data.notes || [];
+        const maxTime = notes.reduce((m, n) => Math.max(m, n.time), 0);
+        const slider = document.getElementById("time");
+        const label = document.getElementById("time-label");
+        const container = document.getElementById("notes");
+        slider.max = maxTime.toFixed(2);
+        slider.addEventListener("input", () => {
+          const t = parseFloat(slider.value);
+          label.textContent = `${t.toFixed(2)}s`;
+          const active = notes.filter((n) => Math.abs(n.time - t) < 0.15);
+          container.textContent = active.map((n) => `string ${n.string_index} fret ${n.fret}`).join(" | ") || "...";
+        });
+      } catch (err) {
+        console.log(err);
+      }
+    }
+    if (document.querySelector(".downloads")) {
+      loadNotes();
+    }
+  </script>
+</body>
+</html>

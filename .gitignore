@@ -1,0 +1,18 @@
+# virtualenv
+.venv/
+venv/
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# pipeline artefacts and downloaded media
+outputs/
+data/
+models/*.pth
+
+# benchmark fixtures: clips.json and truth/ are versioned, media is not
+benchmark/videos/
+benchmark/pages/
+benchmark/results/
