@@ -47,6 +47,8 @@ def test_a_repeated_string_cannot_join_the_same_column():
 
 
 def test_spacing_grows_with_the_gap_before_a_note():
+    """Widths are proportional, not absolute: a dash is a fraction of a short
+    note, so the counts scale with spacing_resolution while the ratios hold."""
     config = Config()
     # steady eighths, then a note four times as far away
     times = [0.0, 0.25, 0.50, 0.75, 1.75]
@@ -55,8 +57,8 @@ def test_spacing_grows_with_the_gap_before_a_note():
     from src.output.text import _space
     _space(cols, config)
     steady = [c.pad for c in cols[1:4]]
-    assert steady == [1, 1, 1]
-    assert cols[4].pad == 4  # a gap four units long reads four units wide
+    assert len(set(steady)) == 1                 # an even run reads evenly
+    assert cols[4].pad == pytest.approx(steady[0] * 4, abs=1)
 
 
 def test_spacing_is_relative_to_the_piece_not_to_the_clock():
@@ -159,3 +161,46 @@ def test_pdf_carries_the_title_into_its_metadata(tmp_path):
     doc = pymupdf.open(str(path))
     assert doc.metadata.get("title") == "Kyoko Kirigiri"
     assert "Kyoko Kirigiri" in doc[0].get_text()
+
+
+def test_spacing_follows_the_page_when_the_notation_is_known():
+    """Engraving software spaces notes by how long they are held, so the page
+    carries the rhythm the reader is looking at — and carries it without the
+    cursor, which some players never draw."""
+    config = Config()
+    sheet = TabSheet(
+        notes=[Note(0.0, 3, 1, 1.0, x=100), Note(0.5, 3, 2, 1.0, x=200),
+               Note(1.0, 3, 3, 1.0, x=500)],   # the third sits three times further
+        measures=[], metadata={"tab_mode": "paged"})
+    cols = columns(sheet, config)
+    from src.output.text import _mark_bars, _space
+    _mark_bars(cols, sheet)
+    _space(cols, config)
+    assert cols[2].pad == pytest.approx(cols[1].pad * 3, abs=1)
+
+
+def test_a_gap_across_a_bar_line_is_not_measured_on_the_page():
+    """Two columns either side of a bar line sit on different parts of the page,
+    or different pages, so the distance between them means nothing."""
+    config = Config()
+    sheet = TabSheet(
+        # two notes in the first bar, then one after the line whose x jumps back
+        notes=[Note(0.0, 3, 1, 1.0, x=800), Note(0.4, 3, 2, 1.0, x=900),
+               Note(1.0, 3, 3, 1.0, x=100)],
+        measures=[Measure(0.0, 0.7)], metadata={"tab_mode": "paged"})
+    cols = columns(sheet, config)
+    from src.output.text import _mark_bars, _space
+    _mark_bars(cols, sheet)
+    _space(cols, config)
+    assert cols[2].bar and cols[2].pad == 1     # not measured across the line
+
+
+def test_a_sheet_without_page_positions_still_spaces_by_time():
+    """The scrolling reader knows no x, and must not lose spacing for it."""
+    config = Config()
+    sheet = _sheet([(0.0, 3, 1), (0.25, 3, 2), (1.25, 3, 3)])
+    cols = columns(sheet, config)
+    from src.output.text import _mark_bars, _space
+    _mark_bars(cols, sheet)
+    _space(cols, config)
+    assert cols[2].pad > cols[1].pad

@@ -12,7 +12,7 @@ of a second apart, a quarter-second slot drops one note in six.
 """
 from bisect import bisect_left
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from src.app.config import Config
 from src.models.schema import TabSheet
@@ -25,6 +25,7 @@ System = List[Tuple[str, str]]  # (string label, rendered line)
 class Column:
     """One printed column: the frets sounding together at a single instant."""
     time: float
+    x: float = 0.0      # where the notation put it, in page pixels
     frets: Dict[int, str] = field(default_factory=dict)
     pad: int = 1        # dashes before this column, standing for the gap
     bar: bool = False   # a bar line falls immediately before it
@@ -66,7 +67,8 @@ def columns(sheet: TabSheet, config: Config) -> List[Column]:
                 and row not in out[-1].frets):
             out[-1].frets[row] = str(note.fret)
         else:
-            out.append(Column(time=note.time, frets={row: str(note.fret)}))
+            out.append(Column(time=note.time, x=note.x,
+                              frets={row: str(note.fret)}))
     return out
 
 
@@ -82,14 +84,33 @@ def _space(cols: List[Column], config: Config) -> None:
     of a piece that is half quick notes and half long holds and every quick note
     collapses into the same column width as its neighbour.
     """
-    gaps = [b.time - a.time for a, b in zip(cols, cols[1:])]
-    positive = sorted(g for g in gaps if g > 0)
+    gaps = _page_gaps(cols) or [b.time - a.time for a, b in zip(cols, cols[1:])]
+    positive = sorted(g for g in gaps if g and g > 0)
     unit = positive[int(len(positive) * 0.25)] if positive else 0.0
+    unit /= max(config.spacing_resolution, 1)
     for column, gap in zip(cols[1:], gaps):
-        if unit <= 0:
-            column.pad = 1
+        if unit <= 0 or not gap or gap <= 0:
+            column.pad = 1          # a bar line between them, or nothing to go on
         else:
             column.pad = min(max(int(round(gap / unit)), 1), config.max_gap_dashes)
+
+
+def _page_gaps(cols: List[Column]) -> Optional[List[Optional[float]]]:
+    """Gaps as the notation itself drew them, or None if the page is not known.
+
+    Engraving software spaces notes by how long they are held, so the distance
+    between two digits on the page carries the rhythm the reader is looking at —
+    and carries it without depending on the cursor, which some players do not
+    draw at all. Only within a bar: two columns either side of a bar line sit on
+    different parts of the page, or on different pages entirely, and the distance
+    between them means nothing.
+    """
+    if not all(c.x for c in cols):
+        return None
+    gaps: List[Optional[float]] = []
+    for a, b in zip(cols, cols[1:]):
+        gaps.append(None if b.bar else b.x - a.x)
+    return gaps if any(g for g in gaps if g and g > 0) else None
 
 
 def _mark_bars(cols: List[Column], sheet: TabSheet) -> None:
@@ -105,8 +126,11 @@ def layout(sheet: TabSheet, config: Config, width: int = 72) -> List[List[Column
     cols = columns(sheet, config)
     if not cols:
         return []
-    _space(cols, config)
+    # Bars first: spacing from the page has to know where the bar lines fall,
+    # since the distance across one is a distance between different parts of the
+    # page — or different pages — and says nothing about the music.
     _mark_bars(cols, sheet)
+    _space(cols, config)
     cols[0].pad = 1  # a system opens flush against its bar line
 
     label_width = max((len(l) for l in _string_labels(sheet, config)), default=0)

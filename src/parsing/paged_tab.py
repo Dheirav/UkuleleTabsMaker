@@ -135,6 +135,7 @@ def notes_from_pages(pages, scan_data: Dict, config: Config) -> ReconstructionRe
                     string_index=det.string_index,
                     fret=det.value,
                     confidence=det.confidence,
+                    x=float(det.x_center),
                 ))
 
     notes.sort(key=lambda n: (n.time, n.string_index))

@@ -44,6 +44,12 @@ class Note:
     string_index: int
     fret: int
     confidence: float
+    # Where the digit sat on the page, in the strip's own pixels. Kept because
+    # it answers a different question from `time`: when a note sounds, versus
+    # where it was printed. Engraving software spaces notes by their duration,
+    # so this is the layout the video shows and the one a reader recognises.
+    # Zero where it is unknown, as in the scrolling reader.
+    x: float = 0.0
 
 
 @dataclass
