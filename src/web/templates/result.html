@@ -95,7 +95,9 @@
 
 <script>
   const jobId = "{{ job_id }}";
-  const TUNING = ["G", "C", "E", "A"];
+  // Staff lines top to bottom: tab puts the highest string on top, so a note's
+  // string_index (its line, counting from the top) indexes this, not G-C-E-A.
+  const TUNING = ["A", "E", "C", "G"];
 
   {% if job.status not in ["done", "error"] %}
   const STAGES = {

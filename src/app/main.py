@@ -128,7 +128,7 @@ def write_outputs(
     pdf_path = os.path.join(config.output_dir, "tabs.pdf")
     txt_path = os.path.join(config.output_dir, "tabs.txt")
     write_json(sheet, json_path)
-    write_pdf(text, pdf_path)
+    write_pdf(sheet, config, pdf_path, sheet.metadata.get("title"))
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(text)
     return {"txt": txt_path, "json": json_path, "pdf": pdf_path}

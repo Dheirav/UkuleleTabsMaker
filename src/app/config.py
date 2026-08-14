@@ -47,6 +47,11 @@ class Config:
     cnn_confidence_threshold: float = 0.5
     ocr_fallback: bool = True
     time_quantum_s: float = 0.25
+    # Notes this close together are one strum and share a printed column.
+    chord_window_s: float = 0.05
+    # Ceiling on the dashes standing for a rest, so a long silence cannot run a
+    # system off the page.
+    max_gap_dashes: int = 12
     note_dedup_tolerance_s: float = 0.15
     bar_time_cluster_tolerance_s: float = 0.25
     speed_estimation_window_s: float = 3.0

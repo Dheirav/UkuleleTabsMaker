@@ -109,6 +109,19 @@ python -m src.web.app
 ```
 Open http://localhost:8000
 
+## How the sheet is laid out
+Tab carries no note values, so horizontal space is the only thing expressing
+rhythm. Every distinct onset gets its own column — notes within
+`chord_window_s` sound together and share one — and the gap before a column is
+set in proportion to the silence before it, measured in units of the piece's own
+quick note (a low percentile of its onset gaps) rather than in seconds. A piece
+played at half speed therefore lays out identically, and a long rest opens up
+without running off the page (`max_gap_dashes`).
+
+Strings run down the staff the way tab is drawn: A on the top line, G on the
+bottom. A note's `string_index` in `tabs.json` is its staff line counting from
+the top, so index 0 is the A string.
+
 ## Notes
 - Best results come from clear tutorial videos with high-contrast tab overlays.
 - Paged mode runs at roughly 4x real time and holds memory flat in the length of
