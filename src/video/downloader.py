@@ -47,6 +47,9 @@ def _build_opts(outtmpl: str, fmt: str, cookies_path: str | None) -> dict:
         "format": fmt,
         "merge_output_format": "mp4",
         "quiet": True,
+        # yt-dlp still paints a progress bar under quiet, which tears through a
+        # display that is drawing its own.
+        "noprogress": True,
         "noplaylist": True,
         "retries": 3,
     }

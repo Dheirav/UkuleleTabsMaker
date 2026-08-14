@@ -357,3 +357,80 @@ def _cached_video(output_dir: str) -> Optional[str]:
         if name.startswith("video.") and os.path.getsize(os.path.join(output_dir, name)) > 0:
             return os.path.join(output_dir, name)
     return None
+
+
+def _minutes(seconds: float) -> str:
+    return f"{int(seconds) // 60}m{int(seconds) % 60:02d}s" if seconds >= 60 else f"{seconds:.0f}s"
+
+
+def run_queue_app(queue_path: str, output_root: str = "./outputs",
+                  workers: int = 0, plain: bool = False) -> None:
+    """Read a whole list of videos, reporting each as it lands."""
+    from src.app.queue import read_queue, run_queue
+
+    screen = Screen()
+    try:
+        targets = read_queue(queue_path)
+    except OSError as exc:
+        screen.write("  " + screen.paint_colour(f"Cannot read {queue_path}: {exc}", RED))
+        return
+    if not targets:
+        screen.write("  " + screen.paint_colour(f"{queue_path} has no videos in it", YELLOW))
+        return
+
+    screen.write()
+    screen.write("  " + screen.paint_colour(f"Queue: {len(targets)} videos", BOLD)
+                 + screen.paint_colour(f"  from {queue_path}", DIM))
+    screen.write()
+    started = time.monotonic()
+    state = _State(stages=[key for key, _ in STAGES])
+
+    def on_progress(stage: str, value: float, detail: str = "") -> None:
+        state.stage, state.overall = stage, value
+        if detail:
+            state.details[stage] = detail
+
+    def on_item(item, index: int, total: int) -> None:
+        state.details.clear()
+        name = item.title or item.target
+        head = f"  {index + 1:2d}/{total}  "
+        if item.skipped:
+            screen.write(head + screen.paint_colour(f"already done · {_clip(name, 60)}", DIM))
+        elif item.error:
+            screen.write(head + screen.paint_colour(f"failed · {_clip(name, 44)}", RED))
+            screen.write("        " + screen.paint_colour(_clip(item.error, 90), DIM))
+        else:
+            facts = f"{item.notes} notes · {item.measures} bars"
+            if item.coverage is not None:
+                facts += f" · {item.coverage * 100:.0f}% covered"
+            screen.write(head + screen.paint_colour("✓ ", GREEN) + _clip(name, 52))
+            screen.write("        " + screen.paint_colour(
+                f"{facts} · {_minutes(item.seconds)}", DIM))
+
+    # Capture log records rather than letting them tear through the report;
+    # anything that mattered is already carried on the item itself.
+    capture = _Capture()
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    root.handlers = [capture]
+    root.setLevel(logging.INFO)
+    try:
+        result = run_queue(targets, output_root, workers,
+                           on_item=on_item, progress_cb=None if plain else on_progress)
+    finally:
+        root.handlers, root.level = saved_handlers, saved_level
+
+    screen.write()
+    total = len(result.items)
+    notes = sum(i.notes for i in result.done)
+    screen.write("  " + screen.paint_colour(
+        f"{len(result.done)} read · {len(result.skipped)} already done · "
+        f"{len(result.failed)} failed", BOLD)
+        + screen.paint_colour(f"   {notes} notes in {_minutes(time.monotonic() - started)}", DIM))
+    fallbacks = [r for r in capture.records if r.levelno >= logging.WARNING]
+    for record in fallbacks[:6]:
+        screen.write("    " + screen.paint_colour(_clip(record.getMessage(), 100), YELLOW))
+    for item in result.failed:
+        screen.write("    " + screen.paint_colour(
+            f"{_clip(item.title or item.target, 46)}: {_clip(item.error, 70)}", YELLOW))
+    screen.write()

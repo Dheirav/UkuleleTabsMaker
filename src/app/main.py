@@ -22,7 +22,6 @@ from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
 from src.vision.page_digits import collect_sample_glyphs, read_page
 from src.parsing.paged_tab import measure_coverage, notes_from_pages
-from src.output.text import render_text_tab
 from src.output.json import write_json
 from src.output.pdf import write_pdf
 
@@ -134,15 +133,11 @@ def write_outputs(
         report_path = os.path.join(config.output_dir, "sampling_report.json")
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(sampling_stats, f, indent=2)
-    text = render_text_tab(sheet, config)
     json_path = os.path.join(config.output_dir, "tabs.json")
     pdf_path = os.path.join(config.output_dir, "tabs.pdf")
-    txt_path = os.path.join(config.output_dir, "tabs.txt")
     write_json(sheet, json_path)
     write_pdf(sheet, config, pdf_path, sheet.metadata.get("title"))
-    with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(text)
-    return {"txt": txt_path, "json": json_path, "pdf": pdf_path}
+    return {"json": json_path, "pdf": pdf_path}
 
 
 def run_paged_pipeline(
@@ -284,7 +279,14 @@ def run_cli() -> None:
     parser.add_argument("--workers", type=int, default=0, help="Number of vision worker processes (0 = auto)")
     parser.add_argument("--plain", action="store_true",
                         help="Log lines and JSON instead of the interactive display")
+    parser.add_argument("--queue", default="",
+                        help="A file of videos, one per line, to read in one go")
     args = parser.parse_args()
+
+    if args.queue:
+        from src.app.tui import run_queue_app
+        run_queue_app(args.queue, args.output, args.workers, plain=args.plain)
+        return
 
     # No target and a terminal to draw on: run as an app rather than demanding
     # the target be spelled correctly on the command line first time.

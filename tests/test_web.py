@@ -24,13 +24,13 @@ def test_process_rejects_invalid_url():
 
 def test_download_unknown_job_returns_404():
     client = app.test_client()
-    resp = client.get("/download/deadbeef/txt")
+    resp = client.get("/download/deadbeef/pdf")
     assert resp.status_code == 404
 
 
 def test_download_traversal_job_returns_404():
     client = app.test_client()
-    resp = client.get("/download/%2e%2e/txt")
+    resp = client.get("/download/%2e%2e/pdf")
     assert resp.status_code == 404
 
 
@@ -38,18 +38,18 @@ def test_download_finished_job_sends_file(tmp_path, monkeypatch):
     job_id = "testjob"
     job_dir = os.path.join(OUTPUTS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
-    with open(os.path.join(job_dir, "tabs.txt"), "w") as f:
+    with open(os.path.join(job_dir, "tabs.pdf"), "w") as f:
         f.write("A |--0--|\n")
     JOBS[job_id] = {"status": "done", "finished_at": 0.0}
     try:
         client = app.test_client()
-        resp = client.get(f"/download/{job_id}/txt")
+        resp = client.get(f"/download/{job_id}/pdf")
         assert resp.status_code == 200
         assert "A |--0--|" in resp.get_data(as_text=True)
         assert "no-store" in resp.headers.get("Cache-Control", "")
     finally:
         JOBS.pop(job_id, None)
-        os.remove(os.path.join(job_dir, "tabs.txt"))
+        os.remove(os.path.join(job_dir, "tabs.pdf"))
         os.rmdir(job_dir)
 
 
@@ -57,7 +57,7 @@ def test_download_finished_job_missing_file_returns_404():
     JOBS["missingout"] = {"status": "done", "finished_at": 0.0}
     try:
         client = app.test_client()
-        resp = client.get("/download/missingout/txt")
+        resp = client.get("/download/missingout/pdf")
         assert resp.status_code == 404
     finally:
         JOBS.pop("missingout", None)

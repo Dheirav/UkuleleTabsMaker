@@ -143,8 +143,6 @@ def download(job_id: str, kind: str):
         return jsonify({"error": "job not finished"}), 409
     base = os.path.join(OUTPUTS_DIR, job_id)
     try:
-        if kind == "txt":
-            return _send_download(os.path.join(base, "tabs.txt"))
         if kind == "pdf":
             return _send_download(os.path.join(base, "tabs.pdf"))
         if kind == "json":

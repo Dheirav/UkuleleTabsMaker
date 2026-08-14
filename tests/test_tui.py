@@ -1,4 +1,5 @@
 import io
+import os
 
 import pytest
 
@@ -152,3 +153,63 @@ def test_a_refused_format_is_retried_before_being_abandoned():
     from src.video import downloader
 
     assert downloader.ATTEMPTS_PER_FORMAT >= 2
+
+
+def test_a_folder_is_named_after_the_song():
+    from src.app.library import slug
+
+    assert slug("Coco - Remember Me (Easy Ukulele Tabs Tutorial)") == \
+        "Coco - Remember Me (Easy Ukulele Tabs Tutorial)"
+    # only what a filesystem refuses is removed; spaces and brackets are what
+    # make a title legible at a glance
+    assert slug('A/B: "C" <D>|E?') == "AB C DE"
+    assert slug("   ") == "untitled"
+    assert len(slug("x" * 200)) <= 80
+
+
+def test_a_song_is_found_again_under_whatever_name_it_took(tmp_path):
+    """The title is not known until the video is fetched, so a run starts in a
+    working folder and is renamed after. A second run has to find the first."""
+    from src.app.library import existing_sheet, finished_dir, working_dir
+
+    root = str(tmp_path)
+    url = "https://youtu.be/abc"
+    start = working_dir(url, root)
+    os.makedirs(start, exist_ok=True)
+    open(os.path.join(start, "tabs.json"), "w").close()
+    final = finished_dir(url, root, start, "My Song")
+
+    assert os.path.basename(final) == "My Song"
+    assert working_dir(url, root) == final          # found again by name
+    assert existing_sheet(url, root) == final
+
+
+def test_two_songs_with_one_name_do_not_overwrite_each_other(tmp_path):
+    from src.app.library import finished_dir, working_dir
+
+    root = str(tmp_path)
+    for url in ("https://youtu.be/one", "https://youtu.be/two"):
+        start = working_dir(url, root)
+        os.makedirs(start, exist_ok=True)
+        open(os.path.join(start, "tabs.json"), "w").close()
+        finished_dir(url, root, start, "Same Title")
+    names = sorted(n for n in os.listdir(root) if not n.startswith("."))
+    assert names == ["Same Title", "Same Title (2)"]
+
+
+def test_a_song_read_before_the_index_existed_is_still_found(tmp_path):
+    """Each sheet records where it came from, so the folders can be searched when
+    the index cannot answer. Without this the same song is fetched again and
+    lands beside itself under a numbered name."""
+    import json as _json
+    from src.app.library import working_dir
+
+    root = str(tmp_path)
+    url = "https://youtu.be/abc"
+    folder = os.path.join(root, "Some Song")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "tabs.json"), "w") as fh:
+        _json.dump({"notes": [], "metadata": {"source_url": url}}, fh)
+
+    assert working_dir(url, root) == folder          # found without an index
+    assert working_dir("https://youtu.be/other", root) != folder
