@@ -80,6 +80,11 @@ class Config:
     ink_max_saturation: int = 60
     string_line_row_ratio: float = 0.5
     string_line_contrast: int = 8
+    # Rows this close to the strip's top or bottom are the letterbox boundary,
+    # not notation.
+    string_line_edge_margin: int = 3
+    # How far apart two staff gaps may be and still count as the same staff.
+    string_line_spacing_tolerance: float = 0.25
     glyph_min_height: int = 8
     glyph_min_area: int = 20
     glyph_max_height_ratio: float = 0.8

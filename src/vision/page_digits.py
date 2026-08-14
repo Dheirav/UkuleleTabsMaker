@@ -19,6 +19,11 @@ def find_string_lines(gray: np.ndarray, config: Config) -> List[int]:
     background = float(np.median(gray))
     dark = (gray < background - config.string_line_contrast).astype(np.uint8)
     rows = np.where(dark.mean(axis=1) > config.string_line_row_ratio)[0]
+    # The first and last rows of the strip are where the video's black surround
+    # meets the page. That edge is dark and runs the full width, so it reads as a
+    # staff line and shifts every note onto its neighbour's string.
+    margin = config.string_line_edge_margin
+    rows = rows[(rows >= margin) & (rows < gray.shape[0] - margin)]
     if len(rows) == 0:
         return []
     groups, current = [], [rows[0]]
@@ -29,7 +34,31 @@ def find_string_lines(gray: np.ndarray, config: Config) -> List[int]:
             groups.append(current)
             current = [r]
     groups.append(current)
-    return [int(np.mean(g)) for g in groups]
+    return _evenly_spaced(([int(np.mean(g)) for g in groups]), config)
+
+
+def _evenly_spaced(lines: List[int], config: Config) -> List[int]:
+    """The longest run of lines a staff could be.
+
+    A staff is equally spaced by construction; stray horizontal darkness is not.
+    Selecting on spacing therefore drops the stray without needing to be told how
+    many strings to expect, which keeps this honest on a video that shows
+    something other than a ukulele.
+    """
+    if len(lines) < 3:
+        return lines
+    best: List[int] = []
+    for start in range(len(lines)):
+        for end in range(start + 3, len(lines) + 1):
+            run = lines[start:end]
+            gaps = [b - a for a, b in zip(run, run[1:])]
+            middle = sorted(gaps)[len(gaps) // 2]
+            if middle <= 0:
+                continue
+            spread = config.string_line_spacing_tolerance
+            if all(abs(g - middle) <= spread * middle for g in gaps) and len(run) > len(best):
+                best = run
+    return best or lines
 
 
 def strip_rules(gray: np.ndarray, config: Config) -> np.ndarray:

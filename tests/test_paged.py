@@ -463,3 +463,37 @@ def test_bar_lines_survive_a_video_with_no_cursor():
     from src.vision.paged import playhead_bar_starts
 
     assert playhead_bar_starts({"heads": [-1] * 50, "fps": 10.0}, Config()) == []
+
+
+def test_the_letterbox_edge_is_not_read_as_a_string():
+    """Where the video's black surround meets the page, the boundary row is dark
+    and runs the full width, so it reads as a staff line. That shifted every note
+    onto its neighbour's string and produced a fifth string on a four-string
+    instrument."""
+    config = Config()
+    strip = np.full((216, 900), 245, np.uint8)
+    strip[0, :] = 0            # letterbox boundary at the top
+    strip[215, :] = 0          # and at the bottom
+    for y in (51, 89, 126, 163):
+        strip[y, :] = 60       # the real staff
+    assert find_string_lines(strip, config) == [51, 89, 126, 163]
+
+
+def test_unevenly_spaced_darkness_is_not_mistaken_for_a_staff():
+    """Selection is on spacing, so a stray rule is dropped for sitting at the
+    wrong distance. A stray that happens to land a whole string-width away is
+    indistinguishable from a real string by this rule and would survive."""
+    config = Config()
+    strip = np.full((216, 900), 245, np.uint8)
+    for y in (51, 89, 126, 163):
+        strip[y, :] = 60
+    strip[30, :] = 60          # 21px from the staff, against its 38px spacing
+    assert find_string_lines(strip, config) == [51, 89, 126, 163]
+
+
+def test_a_clean_staff_is_left_alone():
+    config = Config()
+    strip = np.full((200, 900), 245, np.uint8)
+    for y in (40, 80, 120, 160):
+        strip[y, :] = 60
+    assert find_string_lines(strip, config) == [40, 80, 120, 160]
