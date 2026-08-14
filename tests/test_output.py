@@ -163,20 +163,23 @@ def test_pdf_carries_the_title_into_its_metadata(tmp_path):
     assert "Kyoko Kirigiri" in doc[0].get_text()
 
 
-def test_spacing_follows_the_page_when_the_notation_is_known():
-    """Engraving software spaces notes by how long they are held, so the page
-    carries the rhythm the reader is looking at — and carries it without the
-    cursor, which some players never draw."""
+def test_spacing_follows_the_sound_not_the_page():
+    """Spacing the sheet the way the page looks is wrong, however right it looks.
+    These players lay notes out for readability, not by how long they are held:
+    checked against the recorded sound on two songs, the distance between digits
+    on the page tracks the real gaps between onsets at r=0.30 and r=0.49, while
+    the times do so at r=0.95 and r=0.99."""
     config = Config()
     sheet = TabSheet(
+        # evenly spaced in time, but drawn with the last note far off to the right
         notes=[Note(0.0, 3, 1, 1.0, x=100), Note(0.5, 3, 2, 1.0, x=200),
-               Note(1.0, 3, 3, 1.0, x=500)],   # the third sits three times further
+               Note(1.0, 3, 3, 1.0, x=900)],
         measures=[], metadata={"tab_mode": "paged"})
     cols = columns(sheet, config)
     from src.output.text import _mark_bars, _space
     _mark_bars(cols, sheet)
     _space(cols, config)
-    assert cols[2].pad == pytest.approx(cols[1].pad * 3, abs=1)
+    assert cols[1].pad == cols[2].pad     # even in time, so even on the page
 
 
 def test_a_gap_across_a_bar_line_is_not_measured_on_the_page():

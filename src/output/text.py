@@ -84,7 +84,7 @@ def _space(cols: List[Column], config: Config) -> None:
     of a piece that is half quick notes and half long holds and every quick note
     collapses into the same column width as its neighbour.
     """
-    gaps = _page_gaps(cols) or [b.time - a.time for a, b in zip(cols, cols[1:])]
+    gaps = [b.time - a.time for a, b in zip(cols, cols[1:])]
     positive = sorted(g for g in gaps if g and g > 0)
     unit = positive[int(len(positive) * 0.25)] if positive else 0.0
     unit /= max(config.spacing_resolution, 1)
@@ -95,15 +95,15 @@ def _space(cols: List[Column], config: Config) -> None:
             column.pad = min(max(int(round(gap / unit)), 1), config.max_gap_dashes)
 
 
-def _page_gaps(cols: List[Column]) -> Optional[List[Optional[float]]]:
-    """Gaps as the notation itself drew them, or None if the page is not known.
+def page_gaps(cols: List[Column]) -> Optional[List[Optional[float]]]:
+    """Gaps as the notation drew them. Kept for analysis, not used for layout.
 
-    Engraving software spaces notes by how long they are held, so the distance
-    between two digits on the page carries the rhythm the reader is looking at —
-    and carries it without depending on the cursor, which some players do not
-    draw at all. Only within a bar: two columns either side of a bar line sit on
-    different parts of the page, or on different pages entirely, and the distance
-    between them means nothing.
+    Spacing the sheet this way looks right — it reproduces what the video shows —
+    and is wrong. These players do not space notes by how long they are held.
+    Checked against the recorded sound on two songs, the distance between digits
+    on the page tracks the real gaps between onsets at r=0.30 and r=0.49, while
+    the cursor tracks them at r=0.95 and r=0.99. The page is a layout; the cursor
+    is the music.
     """
     if not all(c.x for c in cols):
         return None
