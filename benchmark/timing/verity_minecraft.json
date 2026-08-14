@@ -1,0 +1,105 @@
+{
+  "verified": true,
+  "schema": "timing/1",
+  "source": "playhead crossing at full frame rate",
+  "video_fps": 60.0,
+  "notes": [
+    {
+      "time": 1.9,
+      "frame": 114,
+      "x": 1592,
+      "string": 0,
+      "fret": 3,
+      "page": 0
+    },
+    {
+      "time": 4.75,
+      "frame": 285,
+      "x": 1736,
+      "string": 0,
+      "fret": 1,
+      "page": 3
+    },
+    {
+      "time": 6.8,
+      "frame": 408,
+      "x": 548,
+      "string": 0,
+      "fret": 0,
+      "page": 5
+    },
+    {
+      "time": 8.7667,
+      "frame": 526,
+      "x": 1804,
+      "string": 0,
+      "fret": 0,
+      "page": 6
+    },
+    {
+      "time": 9.75,
+      "frame": 585,
+      "x": 1649,
+      "string": 1,
+      "fret": 2,
+      "page": 7
+    },
+    {
+      "time": 10.8667,
+      "frame": 652,
+      "x": 1702,
+      "string": 0,
+      "fret": 0,
+      "page": 9
+    },
+    {
+      "time": 11.8,
+      "frame": 708,
+      "x": 1238,
+      "string": 0,
+      "fret": 5,
+      "page": 10
+    },
+    {
+      "time": 12.7833,
+      "frame": 767,
+      "x": 1176,
+      "string": 1,
+      "fret": 7,
+      "page": 12
+    },
+    {
+      "time": 15.85,
+      "frame": 951,
+      "x": 1676,
+      "string": 1,
+      "fret": 5,
+      "page": 14
+    },
+    {
+      "time": 17.9333,
+      "frame": 1076,
+      "x": 1229,
+      "string": 0,
+      "fret": 7,
+      "page": 17
+    },
+    {
+      "time": 21.3833,
+      "frame": 1283,
+      "x": 1667,
+      "string": 0,
+      "fret": 0,
+      "page": 20
+    },
+    {
+      "time": 23.55,
+      "frame": 1413,
+      "x": 911,
+      "string": 0,
+      "fret": 0,
+      "page": 23
+    }
+  ],
+  "verified_how": "all 12 crops inspected: the cursor sits on the labelled note in each"
+}

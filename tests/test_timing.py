@@ -106,3 +106,13 @@ def test_a_note_too_far_away_is_not_claimed_as_a_match():
     read = [Note(1.0 + timing_truth.MATCH_WINDOW_S + 0.5, 0, 3, 1.0)]
     errors, unmatched = timing_truth._match(truth, read)
     assert errors == [] and unmatched == 1
+
+
+def test_sparse_cursor_evidence_is_still_used():
+    """Timing a page from a handful of cursor positions beats falling back to
+    where notes sit in the bar — measured at 16ms against 61ms on a clip whose
+    pages turn too fast to gather many. The gate must not be stricter than the
+    evidence warrants."""
+    config = Config()
+    heads = [x for x in range(10, 70, 10) for _ in range(3)]   # six positions
+    assert _playhead_times(_scan(heads), _page(len(heads)), config) is not None

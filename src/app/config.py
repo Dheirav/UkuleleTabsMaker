@@ -91,4 +91,10 @@ class Config:
     measure_content_threshold: float = 0.08
     measure_min_width_px: int = 60
     use_playhead: bool = True
-    playhead_min_samples: int = 8
+    # Distinct cursor positions a page needs before its notes are timed from the
+    # cursor rather than from where they sit in the bar. Counts positions, not
+    # frames: forty frames of a resting cursor are one position's worth of
+    # evidence. Deliberately permissive — sparse cursor evidence still beats the
+    # fallback, and 2 through 6 all measure identically on the timing benchmark,
+    # so this sits in the middle of that flat range rather than at the edge of it.
+    playhead_min_positions: int = 4

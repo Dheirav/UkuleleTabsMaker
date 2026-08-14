@@ -30,7 +30,7 @@ def _playhead_times(scan_data: Dict, page, config: Config) -> Optional[List]:
         time = i / fps
         if heads[i] not in arrival or time < arrival[heads[i]]:
             arrival[heads[i]] = time
-    if len(arrival) < config.playhead_min_samples:
+    if len(arrival) < config.playhead_min_positions:
         return None
     return sorted(arrival.items())
 
