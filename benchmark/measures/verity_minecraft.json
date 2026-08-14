@@ -1,5 +1,5 @@
 {
-  "verified": false,
+  "verified": true,
   "schema": "measures/1",
   "blind": true,
   "heldout": false,
@@ -10,73 +10,262 @@
       "index": 3,
       "t0": 4.05,
       "t1": 5.08,
-      "notes": []
+      "notes": [
+        [
+          3,
+          3
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ]
     },
     {
       "index": 4,
       "t0": 5.08,
       "t1": 5.77,
-      "notes": []
+      "notes": [
+        [
+          3,
+          3
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          1,
+          7
+        ]
+      ]
     },
     {
       "index": 9,
       "t0": 10.45,
       "t1": 11.07,
-      "notes": []
+      "notes": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          4
+        ]
+      ]
     },
     {
       "index": 12,
       "t0": 13.68,
       "t1": 15.13,
-      "notes": []
+      "notes": [
+        [
+          2,
+          6
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          1,
+          5
+        ]
+      ],
+      "tied": [
+        [
+          1,
+          7
+        ]
+      ]
     },
     {
       "index": 13,
       "t0": 15.28,
       "t1": 16.57,
-      "notes": []
+      "notes": [
+        [
+          3,
+          5
+        ],
+        [
+          1,
+          5
+        ]
+      ]
     },
     {
       "index": 15,
       "t0": 17.5,
       "t1": 18.5,
-      "notes": []
+      "notes": [
+        [
+          1,
+          5
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          7
+        ]
+      ],
+      "tied": [
+        [
+          1,
+          5
+        ]
+      ]
     },
     {
       "index": 17,
       "t0": 19.42,
       "t1": 20.0,
-      "notes": []
+      "notes": [
+        [
+          1,
+          7
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          1,
+          7
+        ]
+      ]
     },
     {
       "index": 18,
       "t0": 20.0,
       "t1": 20.43,
-      "notes": []
+      "notes": [
+        [
+          1,
+          0
+        ]
+      ],
+      "tied": [
+        [
+          1,
+          7
+        ]
+      ]
     },
     {
       "index": 20,
       "t0": 21.58,
       "t1": 22.92,
-      "notes": []
+      "notes": [
+        [
+          0,
+          0
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tied": [
+        [
+          3,
+          5
+        ]
+      ]
     },
     {
       "index": 23,
       "t0": 24.45,
       "t1": 24.97,
-      "notes": []
+      "notes": [
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ]
     },
     {
       "index": 24,
       "t0": 24.97,
       "t1": 25.58,
-      "notes": []
+      "notes": [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          0
+        ]
+      ]
     },
     {
       "index": 27,
       "t0": 27.55,
       "t1": 28.02,
-      "notes": []
+      "notes": [],
+      "tied": [
+        [
+          3,
+          3
+        ]
+      ]
     }
-  ]
+  ],
+  "verified_how": "labelled from cursor-free measure composites with the staff lines named and the measure boundaries marked",
+  "labelled_by": "assistant, reading the same pixels the reader reads",
+  "convention": "a fret in parentheses is a tie - the note is held from the previous bar, not struck again - so it is not a note event and is kept under 'tied' rather than counted as one. Recording them as struck notes would mark a sheet wrong for being right.",
+  "ties_excluded": 5
 }

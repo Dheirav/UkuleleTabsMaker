@@ -55,7 +55,9 @@ def load_clips(argv: List[str]) -> List[dict]:
     for clip in clips:
         if wanted and clip["id"] not in wanted:
             continue
-        path = os.path.join(VIDEOS, f"{clip['id']}.mp4")
+        # A clip may carry its own path: songs the user ran through the tool
+        # live under outputs/, and are worth scoring without being copied.
+        path = clip.get("path") or os.path.join(VIDEOS, f"{clip['id']}.mp4")
         if not os.path.exists(path):
             print(f"  skip {clip['id']} (not downloaded)")
             continue

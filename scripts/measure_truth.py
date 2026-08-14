@@ -30,7 +30,7 @@ if ROOT not in sys.path:
 from src.app.config import Config
 from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
-from src.vision.page_digits import collect_sample_glyphs, read_page
+from src.vision.page_digits import collect_sample_glyphs, find_string_lines, read_page
 
 BENCH = os.path.join(ROOT, "benchmark")
 CLIPS = os.path.join(BENCH, "clips.json")
@@ -46,7 +46,9 @@ def load_clips(argv: List[str]) -> List[dict]:
     for clip in clips:
         if wanted and clip["id"] not in wanted:
             continue
-        path = os.path.join(VIDEOS, f"{clip['id']}.mp4")
+        # A clip may carry its own path: songs the user ran through the tool
+        # live under outputs/, and are worth scoring without being copied.
+        path = clip.get("path") or os.path.join(VIDEOS, f"{clip['id']}.mp4")
         if not os.path.exists(path):
             print(f"  skip {clip['id']} (not downloaded)")
             continue
@@ -92,24 +94,56 @@ def _page_at(pages, measure):
     return None
 
 
-def crop_for(video_path, scan, pages, measure, config):
-    """The measure's slice of its page composite, or of a raw frame if the
-    reader produced no composite there — truth must be labellable exactly where
-    the reader failed."""
-    page = _page_at(pages, measure)
-    if page is not None:
-        source = page.composite
-    else:
-        cap = cv2.VideoCapture(video_path)
-        # Seeking needs the video's own frame rate; scan["fps"] is its sample rate.
-        mid = int((measure.t0 + measure.t1) / 2 * scan.get("video_fps", scan["fps"]))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
+def _measure_composite(video_path, scan, measure):
+    """Median of the frames this measure was sounding over.
+
+    The cursor sweeps this very span, so medianing across it takes the cursor
+    out. A single frame leaves the cursor sitting on top of a digit, and a digit
+    hidden behind the cursor is exactly the one a labeller gets wrong — which
+    would write truth that agrees with nothing.
+    """
+    y0, y1 = scan["y0"], scan["y1"]
+    video_fps = scan.get("video_fps", scan["fps"])
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    for t in np.linspace(measure.t0 + 0.05, max(measure.t1 - 0.05, measure.t0 + 0.06), 15):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * video_fps))
         ok, frame = cap.read()
-        cap.release()
-        if not ok:
+        if ok:
+            frames.append(frame[y0:y1] if y1 > y0 else frame)
+    cap.release()
+    if not frames:
+        return None
+    return np.median(np.stack(frames), axis=0).astype(np.uint8)
+
+
+def _label_strings(crop, config):
+    """Draw a named guide on each staff line, so which string a digit sits on is
+    read off the picture rather than judged by eye."""
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    lines = find_string_lines(gray, config)
+    crop = cv2.copyMakeBorder(crop, 0, 0, 46, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+    names = list(reversed(config.tuning))
+    for k, y in enumerate(lines[:len(names)]):
+        cv2.line(crop, (0, y), (44, y), (0, 140, 255), 1)
+        cv2.putText(crop, f"{k}:{names[k]}", (1, y + 5), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45, (0, 90, 200), 1)
+    return crop
+
+
+def crop_for(video_path, scan, pages, measure, config):
+    """The measure's slice, with the cursor medianed away and the strings named.
+
+    Taken from the measure's own frames rather than from the page composite: a
+    page can span several measures, and its composite is the median of all of
+    them, so a page that turned mid-measure ghosts exactly the notes in dispute.
+    """
+    page = _page_at(pages, measure)
+    source = _measure_composite(video_path, scan, measure)
+    if source is None:
+        if page is None:
             return None
-        y0, y1 = scan["y0"], scan["y1"]
-        source = frame[y0:y1] if y1 > y0 else frame
+        source = page.composite
     pad = 40
     x0 = max(int(measure.x0) - pad, 0)
     x1 = min(int(measure.x1) + pad, source.shape[1])
@@ -122,7 +156,7 @@ def crop_for(video_path, scan, pages, measure, config):
     for edge in (int(measure.x0) - x0, int(measure.x1) - x0):
         if 0 <= edge < crop.shape[1]:
             cv2.line(crop, (edge, 0), (edge, crop.shape[0]), (200, 0, 200), 2)
-    return crop, page is not None
+    return _label_strings(crop, config), page is not None
 
 
 def cmd_dump(clips, config):
@@ -256,9 +290,15 @@ def cmd_score(clips, config):
         agg = {"hits": 0, "subs": 0, "dels": 0, "ins": 0}
         covered = 0
         truth_measures = doc["measures"]
-        for k, truth_measure in enumerate(truth_measures):
+        for truth_measure in truth_measures:
+            # Key on the measure's own index, not its position in the file. A
+            # sampled truth file holds measures 3, 4, 9, ... and comparing its
+            # first entry against the first measure read scores the whole clip
+            # against the wrong music — as near zero as makes no difference,
+            # which reads exactly like a reader that has completely failed.
+            index = truth_measure["index"]
             t = [tuple(x) for x in truth_measure["notes"]]
-            h = [tuple(x) for x in (detected[k] if k < len(detected) else [])]
+            h = [tuple(x) for x in (detected[index] if index < len(detected) else [])]
             if t and h:
                 covered += 1
             for key, val in align(t, h).items():

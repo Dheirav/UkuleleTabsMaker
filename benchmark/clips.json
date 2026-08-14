@@ -64,5 +64,47 @@
     "channel": "Ukulele Cheats",
     "title": "Fingerstyle play along with tabs",
     "heldout": true
+  },
+  {
+    "id": "coco_remember_me_easy_ukulele_tabs_tutor",
+    "title": "Coco - Remember Me (Easy Ukulele Tabs Tutorial)",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/2ec49101fbf2/video.mp4",
+    "source": "user download"
+  },
+  {
+    "id": "bunny_girl_senpai_fukashigi_no_carte_eas",
+    "title": "Bunny Girl Senpai - Fukashigi no Carte (Easy Ukulele Tabs Tutorial)",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/Bunny Girl Senpai - Fukashigi no Carte (Easy Ukulele Tabs Tutorial)/video.mp4",
+    "source": "user download"
+  },
+  {
+    "id": "chainsaw_man_in_the_pool_ukulele_tabs_tu",
+    "title": "Chainsaw Man - In The Pool (Ukulele Tabs Tutorial EASY) The Movie: Reze Arc",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/In The Poo/video.mp4",
+    "source": "user download"
+  },
+  {
+    "id": "chainsaw_man_op_kenshi_yonezu_kick_back_",
+    "title": "Chainsaw Man Op - Kenshi Yonezu - KICK BACK (Easy Ukulele Tabs Tutorial)",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/KICKBACK/video.mp4",
+    "source": "user download"
+  },
+  {
+    "id": "stromae_pomme_ma_meilleure_ennemie_easy_",
+    "title": "Stromae, Pomme - Ma Meilleure Ennemie (Easy Ukulele Tabs Tutorial)",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/Ma Meilleure Ennemie/video.mp4",
+    "source": "user download"
+  },
+  {
+    "id": "oshi_no_ko_opening_full_idol_by_yoasobi_",
+    "title": "Oshi no Ko - Opening FULL Idol (アイドル) by YOASOBI (Easy Ukulele Tabs Tutorial)",
+    "local": true,
+    "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/Oshi no Ko - Opening FULL Ido/video.mp4",
+    "source": "user download"
   }
 ]

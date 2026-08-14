@@ -287,6 +287,15 @@ def scan(video_path: str, config: Config,
         if on_frame:
             on_frame(frame_no, max(expected, frame_no))
     cap.release()
+    if idx == 0:
+        # The file opened and reported a frame count, but not one frame decoded.
+        # AV1 does this: OpenCV's bundled FFmpeg cannot decode it on many
+        # platforms and fails per frame rather than on open. Left unchecked the
+        # run carries on and writes a confidently empty tab sheet.
+        raise RuntimeError(
+            f"No frames could be decoded from {video_path}. The video is most "
+            f"likely AV1, which this build of OpenCV cannot read — re-download "
+            f"it, which now asks YouTube for H.264.")
     return {"fps": fps, "video_fps": video_fps, "stride": stride,
             "y0": y0, "y1": y1, "n": idx, "scan_scale": scale,
             "diffs": diffs, "spans": spans, "heads": heads,

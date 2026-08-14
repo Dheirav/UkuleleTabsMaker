@@ -497,3 +497,29 @@ def test_a_clean_staff_is_left_alone():
     for y in (40, 80, 120, 160):
         strip[y, :] = 60
     assert find_string_lines(strip, config) == [40, 80, 120, 160]
+
+
+def test_a_video_that_decodes_nothing_fails_loudly(tmp_path):
+    """AV1 opens and reports a frame count, then fails on every frame read. The
+    run used to carry on and write a confidently empty tab sheet."""
+    import cv2 as _cv2
+    from src.vision import paged as paged_module
+
+    path = tmp_path / "undecodable.mp4"
+    path.write_bytes(b"not a video, but a file that exists")
+
+    class _Cap:
+        def isOpened(self): return True
+        def get(self, prop): return 300.0
+        def read(self): return False, None
+        def grab(self): return False
+        def set(self, *a): return True
+        def release(self): return None
+
+    original = _cv2.VideoCapture
+    paged_module.cv2.VideoCapture = lambda *a, **k: _Cap()
+    try:
+        with pytest.raises(RuntimeError, match="No frames could be decoded"):
+            paged_module.scan(str(path), Config(), content_rows=(0, 100))
+    finally:
+        paged_module.cv2.VideoCapture = original
