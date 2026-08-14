@@ -1,17 +1,29 @@
 # Ukulele Tabs Maker
 
-Extract ukulele tab sheets from YouTube tutorial videos that display scrolling tabs. This is a computer-vision pipeline (not audio processing) and reconstructs time-aligned tabs from on-screen notation.
+Turn a YouTube ukulele tutorial into a tab sheet you can print and play from.
+
+It reads the notation off the screen — this is computer vision, not audio
+transcription — and recovers each note's fret, string and time from what the
+player itself shows.
+
+Measured against hand-checked ground truth on five clips (379 notes): **98.9%
+recall, 100% precision**, with onsets a median of 17ms from the video's own
+cursor. Across a library of 23 songs and 2,145 bars, 8 bars were lost.
 
 ## Features
-- YouTube ingestion via yt-dlp
+- YouTube ingestion via yt-dlp, preferring H.264 because OpenCV cannot decode
+  AV1 on many platforms and reads it as an empty video
 - Automatic detection of paged vs scrolling tab videos
-- **Paged mode** (tab-player screencasts): page segmentation, per-page compositing,
-  and timing taken from the player's own measure highlight and playhead
+- **Paged mode** (tab-player screencasts): page segmentation, per-page
+  compositing, and timing taken from the player's own measure highlight and
+  cursor — found by its movement rather than its colour, so a renderer that
+  draws a pale hairline works as well as one that draws a blue bar
 - **Scrolling mode** (legacy): adaptive sampling, Hough line detection, and
   scroll-speed reconstruction
 - Digit recognition against font-rendered reference glyphs, with the font
   identified per video
-- Text, JSON, and PDF output
+- PDF and JSON output, the sheet drawn as engraved notation
+- Read a whole list of videos in one go
 - Web UI with basic playback view
 - CLI + Dockerized web service
 
@@ -92,15 +104,29 @@ JSON summary instead of the live display:
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID" --output ./outputs
 python main.py --video-path ./clip.mp4 --output ./outputs
 ```
-Outputs are written to the run directory:
-- `tabs.txt`
-- `tabs.pdf`
-- `tabs.json`
+Each song gets its own folder under `--output`, named after the song, holding:
+- `tabs.pdf` — the sheet, drawn as notation
+- `tabs.json` — every note with its time, string, fret and position on the page
+- `video.mp4` and `title.txt`, so a re-run reads the copy already fetched
+
+The title is only known once the video has been fetched, so a run starts in a
+working folder and is renamed when the title arrives. An index records where each
+source ended up, and a sheet's own record of its source is searched when the
+index cannot answer, so the same song is never fetched twice.
 
 Save sampled frames for debugging (scrolling mode only):
 ```bash
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID" --output ./outputs --save-frames
 ```
+
+## Reading a whole list
+```bash
+python main.py --queue queue.txt
+```
+One video per line, a URL or a path; blank lines and `#` comments are ignored.
+A failure is recorded and stepped over — one video offered only in a codec this
+build cannot decode should not cost you the rest of the list — and videos already
+read are skipped, so adding a line later costs that line rather than the list.
 
 ## Web UI
 Start locally:
@@ -121,6 +147,12 @@ without running off the page (`max_gap_dashes`).
 Strings run down the staff the way tab is drawn: A on the top line, G on the
 bottom. A note's `string_index` in `tabs.json` is its staff line counting from
 the top, so index 0 is the A string.
+
+A fret in brackets is a tie — a note still ringing from the bar before, not one
+to pluck — and is not printed as a struck note. `sampling_report.json` counts
+those bars separately from bars where nothing was found at all, because only the
+second means music was lost. Reported together, a slow piece full of held notes
+looked like one bar in six missing when nothing was wrong.
 
 ## Notes
 - Best results come from clear tutorial videos with high-contrast tab overlays.
@@ -158,7 +190,9 @@ src/
 ## Accuracy harness
 
 Recognition accuracy is measured against hand-checked ground truth so that
-changes to the vision code can be scored instead of eyeballed.
+changes to the vision code can be scored instead of eyeballed. Every number in
+this README comes from these harnesses; where a claim could not be measured it
+is not made.
 
 There are two harnesses, because *which* notes and *when* they sound fail in
 different ways and a change can easily improve one while quietly hurting the
