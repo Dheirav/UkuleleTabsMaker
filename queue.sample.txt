@@ -1,0 +1,14 @@
+# One video per line — a YouTube URL or a path to a local file.
+# Blank lines and anything after a # are ignored, so a list can be
+# annotated and pruned without deleting it.
+#
+#   python main.py --queue queue.txt
+#
+# Videos already read are skipped, so adding a line later costs that
+# line rather than the whole list. A failure is recorded and stepped
+# over: one video offered only in a codec this build cannot decode
+# does not cost you the rest.
+
+https://www.youtube.com/watch?v=VIDEO_ID
+https://youtu.be/ANOTHER_ID          # a comment about this one
+./some-local-recording.mp4

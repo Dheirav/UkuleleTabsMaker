@@ -121,7 +121,7 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID" --output ./outputs --s
 
 ## Reading a whole list
 ```bash
-python main.py --queue queue.txt
+python main.py --queue queue.txt   # copy queue.sample.txt to start
 ```
 One video per line, a URL or a path; blank lines and `#` comments are ignored.
 A failure is recorded and stepped over — one video offered only in a codec this

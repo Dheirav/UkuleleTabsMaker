@@ -18,3 +18,6 @@ benchmark/pages/
 benchmark/results/
 benchmark/measure_crops/
 benchmark/timing_crops/
+
+# your own working list; queue.sample.txt is the template
+queue.txt
