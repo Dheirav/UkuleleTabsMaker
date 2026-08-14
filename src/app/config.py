@@ -106,3 +106,10 @@ class Config:
     # fallback, and 2 through 6 all measure identically on the timing benchmark,
     # so this sits in the middle of that flat range rather than at the edge of it.
     playhead_min_positions: int = 4
+    # How much of a bar's width the cursor must be seen to cross before its times
+    # are trusted for that bar. Below this the bar is timed by position instead —
+    # all of it, never half and half. Low because the cursor beats the fallback
+    # even on partial evidence: 0 and 0.25 measure identically on the timing
+    # benchmark, while 0.5 costs a short-barred clip half its bars and sextuples
+    # its 90th-percentile error.
+    playhead_min_coverage: float = 0.25

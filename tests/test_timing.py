@@ -21,8 +21,9 @@ def _scan(heads, fps=10.0):
     return {"heads": heads, "fps": fps}
 
 
-def _page(n):
-    return Page(index=0, first_frame=0, last_frame=n - 1, t0=0.0, t1=n / 10.0)
+def _bar(n, fps=10.0, x0=0, x1=1000):
+    """A measure spanning n samples, wide enough that any cursor sweep covers it."""
+    return MeasureSpan(x0=x0, x1=x1, t0=0.0, t1=n / fps)
 
 
 def test_a_resting_cursor_is_dated_by_when_it_arrived():
@@ -32,7 +33,8 @@ def test_a_resting_cursor_is_dated_by_when_it_arrived():
     config = Config()
     # ten positions, each held five frames
     heads = [x for x in range(10, 110, 10) for _ in range(5)]
-    samples = _playhead_times(_scan(heads), _page(len(heads)), config)
+    # bar edges sit exactly on the cursor's travel, so no anchors are added
+    samples = _playhead_times(_scan(heads), _bar(len(heads), x0=10, x1=100), config)
     assert samples[:3] == [(10, 0.0), (20, 0.5), (30, 1.0)]
     assert len(samples) == 10
     xs = [x for x, _ in samples]
@@ -45,8 +47,8 @@ def test_finer_sampling_does_not_push_notes_later():
     positions = list(range(10, 110, 10))
     coarse_heads = [x for x in positions for _ in range(2)]
     fine_heads = [x for x in positions for _ in range(8)]
-    coarse = _playhead_times(_scan(coarse_heads, fps=4.0), _page(len(coarse_heads)), config)
-    fine = _playhead_times(_scan(fine_heads, fps=16.0), _page(len(fine_heads)), config)
+    coarse = _playhead_times(_scan(coarse_heads, fps=4.0), _bar(len(coarse_heads), fps=4.0, x1=110), config)
+    fine = _playhead_times(_scan(fine_heads, fps=16.0), _bar(len(fine_heads), fps=16.0, x1=110), config)
     assert _time_from_playhead(20, coarse) == pytest.approx(
         _time_from_playhead(20, fine), abs=1e-6)
 
@@ -55,7 +57,7 @@ def test_a_page_the_cursor_barely_crossed_is_not_trusted():
     """Forty samples all at one x are no evidence at all, so the threshold counts
     distinct cursor positions rather than frames."""
     config = Config()
-    assert _playhead_times(_scan([5] * 40), _page(40), config) is None
+    assert _playhead_times(_scan([5] * 40), _bar(40, x1=10), config) is None
 
 
 def test_merged_bars_are_split_back_apart():
@@ -115,4 +117,67 @@ def test_sparse_cursor_evidence_is_still_used():
     evidence warrants."""
     config = Config()
     heads = [x for x in range(10, 70, 10) for _ in range(3)]   # six positions
-    assert _playhead_times(_scan(heads), _page(len(heads)), config) is not None
+    assert _playhead_times(_scan(heads), _bar(len(heads), x0=10, x1=70), config) is not None
+
+
+def test_a_bar_the_cursor_barely_crossed_is_timed_by_position_instead():
+    """Half a bar of cursor evidence cannot speak for the whole bar. Timing the
+    covered notes from the cursor and the rest from their position mixed two
+    models inside one bar and put the notes out of order with each other."""
+    config = Config()
+    heads = [x for x in range(10, 70, 10) for _ in range(3)]
+    # the cursor crossed 60px of a 400px bar
+    assert _playhead_times(_scan(heads), _bar(len(heads), x0=0, x1=400), config) is None
+
+
+def test_two_sweeps_in_one_window_cannot_fold_the_times():
+    """A page holding two bars holds two cursor sweeps. Sorting those by x
+    interleaves them, and np.interp handed times that fall as x rises returns
+    nonsense — which put notes far apart in the bar at nearly the same instant."""
+    config = Config()
+    sweep = [x for x in range(100, 500, 20)]
+    heads = sweep + sweep                    # the cursor crosses, snaps back, crosses again
+    # scoped to one bar's own window, only the first sweep is in view
+    bar = MeasureSpan(x0=100, x1=480, t0=0.0, t1=len(sweep) / 10.0)
+    samples = _playhead_times(_scan(heads), bar, config)
+    times = [t for _, t in samples]
+    assert times == sorted(times)            # rises with x, as interp requires
+
+
+def test_notes_past_the_cursor_do_not_pile_onto_one_instant():
+    """np.interp pins anything beyond its last sample to that sample's time, so
+    every note past where the cursor was seen came out at the same instant —
+    distinct notes reading as one. The bar's own edges extend the mapping."""
+    config = Config()
+    heads = [x for x in range(100, 300, 10) for _ in range(2)]   # cursor stops at 290
+    bar = MeasureSpan(x0=100, x1=700, t0=0.0, t1=4.05)
+    samples = _playhead_times(_scan(heads), bar, config)
+    late = [_time_from_playhead(x, samples) for x in (400, 550, 700)]
+    assert late == sorted(late)
+    assert len(set(late)) == 3          # three notes, three different instants
+
+
+def test_time_past_the_cursor_carries_on_at_the_cursor_s_own_pace():
+    """The bar's far edge cannot anchor the mapping: the highlight often leaves
+    before the cursor reaches it, which crams the tail of the bar into whatever
+    milliseconds remain and compresses notes half a bar apart onto one beat."""
+    config = Config()
+    heads = [x for x in range(100, 300, 10) for _ in range(2)]   # 100..290 over 4s
+    bar = MeasureSpan(x0=40, x1=800, t0=0.0, t1=4.05)            # ends just after
+    samples = _playhead_times(_scan(heads), bar, config)
+    speed = (290 - 100) / (samples[-1][1] - samples[0][1])
+    beyond = _time_from_playhead(490, samples)
+    assert beyond == pytest.approx(samples[-1][1] + 200 / speed)
+    assert beyond > bar.t1        # honest about running past the highlight
+
+
+def test_notes_far_apart_are_never_squeezed_onto_one_beat():
+    """Distinct notes 500px apart must not come out 20ms apart, whether by being
+    pinned to the cursor's last sighting or crammed against the bar's edge."""
+    config = Config()
+    heads = [x for x in range(100, 300, 10) for _ in range(2)]
+    bar = MeasureSpan(x0=100, x1=700, t0=0.0, t1=4.05)
+    samples = _playhead_times(_scan(heads), bar, config)
+    times = [_time_from_playhead(x, samples) for x in (350, 520, 690)]
+    assert times == sorted(times)
+    assert all(b - a > 0.3 for a, b in zip(times, times[1:]))

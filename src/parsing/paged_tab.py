@@ -13,19 +13,27 @@ from src.models.schema import Note, ReconstructionResult
 from src.vision.paged import playhead_bar_starts
 
 
-def _playhead_times(scan_data: Dict, page, config: Config) -> Optional[List]:
-    """(x, t) samples of the cursor while this page was on screen.
+def _playhead_times(scan_data: Dict, measure, config: Config) -> Optional[List]:
+    """(x, t) samples of the cursor while this measure was sounding.
+
+    Scoped to the measure, not to the page that carried it. The cursor sweeps a
+    bar once and snaps back, so a page holding more than one bar holds more than
+    one sweep — and sorting those samples by x interleaves them, folding the
+    times over. np.interp needs its times to rise with x; handed a fold it
+    returns nonsense, which is how notes far apart in the bar came out at almost
+    the same instant.
 
     One entry per x, holding the first time the cursor was seen there. The cursor
-    rests on the same pixel for several frames, so the raw samples repeat an x
-    many times over — 84% of them at full frame rate — and np.interp needs its
-    x values strictly increasing. Fed duplicates it reads off the last one, which
+    rests on the same pixel for several frames, and np.interp needs its x values
+    strictly increasing. Fed duplicates it reads off the last of a run, which
     dates every note to the moment the cursor *left* it rather than arrived, and
     grows worse the more finely the video is sampled.
     """
     heads, fps = scan_data["heads"], scan_data["fps"]
+    first = max(int(measure.t0 * fps), 0)
+    last = min(int(measure.t1 * fps), len(heads) - 1)
     arrival: Dict[int, float] = {}
-    for i in range(page.first_frame, min(page.last_frame + 1, len(heads))):
+    for i in range(first, last + 1):
         if heads[i] < 0:
             continue
         time = i / fps
@@ -33,15 +41,38 @@ def _playhead_times(scan_data: Dict, page, config: Config) -> Optional[List]:
             arrival[heads[i]] = time
     if len(arrival) < config.playhead_min_positions:
         return None
-    return sorted(arrival.items())
+    samples = sorted(arrival.items())
+    # The cursor must cross a fair part of the bar for its times to speak for it
+    # at all. Where it does not, the caller times the whole bar by position —
+    # never half and half, which put the notes out of order with each other.
+    span = float(measure.x1 - measure.x0)
+    covered = samples[-1][0] - samples[0][0]
+    if span > 0 and covered < span * config.playhead_min_coverage:
+        return None
+    return samples
 
 
-def _time_from_playhead(x: float, samples: List) -> Optional[float]:
+def _time_from_playhead(x: float, samples: List) -> float:
+    """When the cursor reached x, at the pace it was seen to travel.
+
+    Past the last sighting the time carries on at the cursor's own measured
+    speed. np.interp would instead pin every such note to the last sample's
+    time, so a run of them all lands on one instant and reads as one note. Nor
+    can the bar's far edge serve as an anchor: the highlight often leaves before
+    the cursor gets there, which crams the whole tail of the bar into the few
+    milliseconds left and compresses notes half a bar apart into the same beat.
+    """
     xs = [s[0] for s in samples]
     ts = [s[1] for s in samples]
-    if x < xs[0] or x > xs[-1]:
-        return None
-    return float(np.interp(x, xs, ts))
+    if xs[0] < x < xs[-1]:
+        return float(np.interp(x, xs, ts))
+    travel, elapsed = xs[-1] - xs[0], ts[-1] - ts[0]
+    if travel <= 0 or elapsed <= 0:
+        return float(ts[0] if x <= xs[0] else ts[-1])
+    speed = travel / elapsed
+    if x <= xs[0]:
+        return float(ts[0] - (xs[0] - x) / speed)
+    return float(ts[-1] + (x - xs[-1]) / speed)
 
 
 def measure_coverage(pages) -> Dict[str, float]:
@@ -83,9 +114,6 @@ def notes_from_pages(pages, scan_data: Dict, config: Config) -> ReconstructionRe
     for page in pages:
         if not page.digits:
             continue
-        samples = (_playhead_times(scan_data, page, config)
-                   if config.use_playhead else None)
-
         for measure in page.measures:
             span = float(measure.x1 - measure.x0)
             if span <= 0:
@@ -94,9 +122,12 @@ def notes_from_pages(pages, scan_data: Dict, config: Config) -> ReconstructionRe
             if not inside:
                 continue
             bar_times.append(measure.t0)
+            samples = (_playhead_times(scan_data, measure, config)
+                       if config.use_playhead else None)
             for det in inside:
-                time = _time_from_playhead(det.x_center, samples) if samples else None
-                if time is None:
+                if samples:
+                    time = _time_from_playhead(det.x_center, samples)
+                else:
                     frac = (det.x_center - measure.x0) / span
                     time = measure.t0 + frac * (measure.t1 - measure.t0)
                 notes.append(Note(
