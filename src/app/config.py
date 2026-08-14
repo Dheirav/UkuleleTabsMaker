@@ -99,6 +99,16 @@ class Config:
     # How far the cursor must jump backwards, as a fraction of its own travel,
     # to count as the start of a new bar rather than detection noise.
     playhead_reset_ratio: float = 0.25
+    # Finding the cursor by what moves rather than by its colour. A moving cursor
+    # darkens its column by tens of levels; a frame where nothing moved scores
+    # about one, so this sits far below the signal and far above the noise.
+    playhead_motion_min_delta: float = 8.0
+    # A cursor shifts a handful of columns. A page turn shifts most of them, and
+    # must not be mistaken for one.
+    playhead_motion_max_width: float = 0.05
+    # Below this share of samples showing a coloured cursor, the colour rule is
+    # taken to have missed this renderer entirely and motion takes over.
+    playhead_colour_min_share: float = 0.2
     # Distinct cursor positions a page needs before its notes are timed from the
     # cursor rather than from where they sit in the bar. Counts positions, not
     # frames: forty frames of a resting cursor are one position's worth of

@@ -523,3 +523,40 @@ def test_a_video_that_decodes_nothing_fails_loudly(tmp_path):
             paged_module.scan(str(path), Config(), content_rows=(0, 100))
     finally:
         paged_module.cv2.VideoCapture = original
+
+
+def test_a_moving_cursor_is_found_whatever_colour_it_is():
+    """The cursor is the one thing on the page that moves. Keying on colour needs
+    a new rule per renderer — this channel draws a saturated blue bar on one song
+    and a pale cyan hairline on another, and the hairline fails four of the five
+    colour tests written for the bar."""
+    from src.vision.paged import playhead_by_motion
+
+    config = Config()
+    page = np.full((80, 400, 3), 240, np.uint8)
+    before = page.copy()
+    before[:, 100:103] = 170          # a faint cursor, nothing like saturated blue
+    after = page.copy()
+    after[:, 140:143] = 170           # ...one step further on
+    x, strength = playhead_by_motion(before, after, config)
+    assert 138 <= x <= 144
+    assert strength > config.playhead_motion_min_delta
+
+
+def test_a_page_turn_is_not_mistaken_for_a_cursor():
+    """A page turn darkens columns too, but across most of the width."""
+    from src.vision.paged import playhead_by_motion
+
+    config = Config()
+    before = np.full((80, 400, 3), 240, np.uint8)
+    after = np.full((80, 400, 3), 150, np.uint8)   # the whole page changed
+    x, _ = playhead_by_motion(before, after, config)
+    assert x == -1
+
+
+def test_a_still_page_reports_no_cursor():
+    from src.vision.paged import playhead_by_motion
+
+    page = np.full((80, 400, 3), 240, np.uint8)
+    x, _ = playhead_by_motion(page, page.copy(), Config())
+    assert x == -1

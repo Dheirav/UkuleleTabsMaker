@@ -57,6 +57,31 @@ def playhead_mask(bgr: np.ndarray) -> np.ndarray:
     return (b > 140) & (g < 130) & (r < 150) & (b - g > 60) & (b - r > 50)
 
 
+def playhead_by_motion(previous: np.ndarray, strip: np.ndarray,
+                       config: Config) -> Tuple[int, float]:
+    """The column that darkened most since the last sample: the cursor arriving.
+
+    Structural rather than coloured. The notation, the staff and the bar lines
+    all hold still; the cursor is the one thing that moves, whatever colour a
+    renderer paints it. Keying on colour instead means a new rule per player —
+    this channel alone draws a saturated blue bar on one song and a pale cyan
+    hairline on another, and the hairline fails four of the five colour tests
+    written for the bar.
+
+    Returns (x, strength). A page turn also darkens columns, so the change has
+    to be narrow: a cursor moves a few columns, a page turn moves most of them.
+    """
+    delta = (previous.astype(np.int16) - strip.astype(np.int16)).mean(axis=(0, 2))
+    x = int(np.argmax(delta))
+    strength = float(delta[x])
+    if strength < config.playhead_motion_min_delta:
+        return -1, strength
+    changed = int((delta > strength * 0.5).sum())
+    if changed > delta.size * config.playhead_motion_max_width:
+        return -1, strength
+    return x, strength
+
+
 def notation_ink(strip: np.ndarray, config: Config) -> np.ndarray:
     """Neutral dark ink: the notation itself.
 
@@ -229,6 +254,8 @@ def scan(video_path: str, config: Config,
     diffs: List[float] = []
     spans: List[Optional[Tuple[int, int]]] = []
     heads: List[int] = []
+    motion_heads: List[int] = []
+    previous_strip = None
     idx = 0
     frame_no = 0
     scale = 1.0
@@ -283,6 +310,13 @@ def scan(video_path: str, config: Config,
         ph = playhead_mask(strip).sum(0)
         heads.append(int(np.argmax(ph) / scale)
                      if ph.max() > strip.shape[0] * 0.3 else -1)
+
+        if previous_strip is not None and previous_strip.shape == strip.shape:
+            mx, _ = playhead_by_motion(previous_strip, strip, config)
+            motion_heads.append(int(mx / scale) if mx >= 0 else -1)
+        else:
+            motion_heads.append(-1)
+        previous_strip = strip
         idx += 1
         if on_frame:
             on_frame(frame_no, max(expected, frame_no))
@@ -296,9 +330,19 @@ def scan(video_path: str, config: Config,
             f"No frames could be decoded from {video_path}. The video is most "
             f"likely AV1, which this build of OpenCV cannot read — re-download "
             f"it, which now asks YouTube for H.264.")
+    # Fall back to the moving cursor only where the coloured one was never seen.
+    # Additive by design: the clips whose cursor the colour rule already finds
+    # keep the readings their accuracy was measured against, and the players it
+    # cannot see gain timing they had none of.
+    coloured = sum(1 for h in heads if h >= 0)
+    moving = sum(1 for h in motion_heads if h >= 0)
+    if coloured < idx * config.playhead_colour_min_share and moving > coloured:
+        heads = motion_heads
+
     return {"fps": fps, "video_fps": video_fps, "stride": stride,
             "y0": y0, "y1": y1, "n": idx, "scan_scale": scale,
             "diffs": diffs, "spans": spans, "heads": heads,
+            "motion_heads": motion_heads, "coloured_head_share": coloured / max(idx, 1),
             "boundaries": boundaries,
             "signatures": np.asarray(signatures, dtype=np.float32) if signatures else None}
 
