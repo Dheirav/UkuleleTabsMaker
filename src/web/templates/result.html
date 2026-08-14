@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Tab sheet{% endblock %}
+{% block title %}{{ job.sheet.metadata.title if job.sheet else "Tab sheet" }}{% endblock %}
 {% block subtitle %}
-  {%- if job.status == "done" -%}Your tab sheet is ready.
+  {%- if job.status == "done" -%}
+    {{- job.sheet.metadata.title or "Your tab sheet is ready." -}}
   {%- elif job.status == "error" -%}Something went wrong.
   {%- else -%}Reading the video…{%- endif -%}
 {% endblock %}

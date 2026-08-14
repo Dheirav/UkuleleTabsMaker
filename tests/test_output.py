@@ -126,3 +126,36 @@ def test_pdf_handles_an_empty_sheet(tmp_path):
     path = tmp_path / "empty.pdf"
     write_pdf(_sheet([]), Config(), str(path))
     assert os.path.getsize(path) > 0
+
+
+def test_the_sheet_is_named_after_its_source():
+    config = Config()
+    sheet = _sheet([(0.0, 3, 1)])
+    sheet.metadata["title"] = "Sherma Song - Hollow Knight Silksong"
+    assert render_text_tab(sheet, config).splitlines()[0] == \
+        "Sherma Song - Hollow Knight Silksong"
+
+
+def test_an_unnamed_sheet_still_has_a_heading():
+    assert render_text_tab(_sheet([(0.0, 3, 1)]), Config()).splitlines()[0] == "Ukulele tab"
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("silksong_sherma.mp4", "Silksong Sherma"),
+    ("my-favourite-song.mkv", "My Favourite Song"),
+    ("TOTO Africa.mp4", "TOTO Africa"),
+])
+def test_a_local_file_is_named_after_itself(name, expected):
+    from src.app.main import _title_from_filename
+    assert _title_from_filename(f"/videos/{name}") == expected
+
+
+def test_pdf_carries_the_title_into_its_metadata(tmp_path):
+    pymupdf = pytest.importorskip("pymupdf")
+    path = tmp_path / "named.pdf"
+    sheet = _sheet([(0.0, 3, 1), (0.5, 2, 3)])
+    sheet.metadata["title"] = "Kyoko Kirigiri"
+    write_pdf(sheet, Config(), str(path), sheet.metadata["title"])
+    doc = pymupdf.open(str(path))
+    assert doc.metadata.get("title") == "Kyoko Kirigiri"
+    assert "Kyoko Kirigiri" in doc[0].get_text()

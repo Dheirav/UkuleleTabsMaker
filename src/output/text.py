@@ -158,10 +158,11 @@ def render_text_tab(sheet: TabSheet, config: Config) -> str:
         return "No notes detected."
 
     single = sheet.metadata.get("tab_mode") == "single"
-    header = "Ukulele Tabs (single line)" if single else "Ukulele Tabs (GCEA)"
+    tuning = "single line" if single else "GCEA"
+    title = sheet.metadata.get("title") or "Ukulele tab"
     label_width = max(len(label) for label, _ in systems[0])
 
-    out = [header, ""]
+    out = [title, f"{len(sheet.notes)} notes · {len(sheet.measures)} measures · {tuning}", ""]
     for system in systems:
         for label, line in system:
             out.append(f"{label.rjust(label_width)}|{line}")

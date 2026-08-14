@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import re
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from typing import Callable, Dict, List, Optional
@@ -10,7 +11,7 @@ from src.app.config import Config
 from src.app.progress import STAGES, Progress, ProgressFn
 from src.models.schema import FrameSample, TabSheet
 from src.utils.logging import setup_logging
-from src.video.downloader import download_youtube
+from src.video.downloader import cached_title, download_youtube
 from src.video.sampler import sample_frames
 from src.vision.region import detect_tab_region
 from src.vision.lines import detect_string_lines, detect_bar_lines, consensus_staff, apply_consensus_staff
@@ -30,8 +31,18 @@ logger = logging.getLogger(__name__)
 
 
 def download_video(url: str, config: Config,
-                   progress_cb: Optional[Callable[[float, str], None]] = None) -> str:
+                   progress_cb: Optional[Callable[[float, str], None]] = None):
     return download_youtube(url, config.output_dir, progress_cb)
+
+
+def _title_from_filename(video_path: str) -> str:
+    """A readable name from a file: "sherma_song-final.mp4" -> "Sherma Song Final"."""
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    words = re.split(r"[\s_\-.]+", stem)
+    words = [w for w in words if w]
+    if not words:
+        return ""
+    return " ".join(w if w.isupper() else w.capitalize() for w in words)
 
 
 def sample_video(video_path: str, config: Config) -> List[FrameSample]:
@@ -215,9 +226,16 @@ def run_pipeline(
         stages.remove("download")
     progress = Progress(progress_cb, stages)
 
+    title = ""
     if not video_path:
         progress.stage("download", "contacting YouTube")
-        video_path = download_video(url, config, progress.tick)
+        download = download_video(url, config, progress.tick)
+        video_path, title = download.path, download.title
+    else:
+        # A file the caller handed us: the best name available is its own, or
+        # the title stored beside it when this video was downloaded earlier.
+        title = cached_title(os.path.dirname(os.path.abspath(video_path))) or \
+            _title_from_filename(video_path)
 
     source = url if url else (video_path or "local")
     progress.stage("probe", "checking whether the tab scrolls")
@@ -232,6 +250,8 @@ def run_pipeline(
     if paged_video:
         sheet, stats = run_paged_pipeline(video_path, config, source, progress,
                                           content_rows)
+        if title:
+            sheet.metadata["title"] = title
         progress.stage("write", "txt · pdf · json")
         write_outputs(sheet, config, stats)
         progress.done()
@@ -245,6 +265,8 @@ def run_pipeline(
 
     progress.stage("timing")
     sheet = reconstruct_sheet(tab_frames, config, source)
+    if title:
+        sheet.metadata["title"] = title
 
     progress.stage("write", "txt · pdf · json")
     write_outputs(sheet, config, sampling_stats)

@@ -1,8 +1,21 @@
 import os
+from dataclasses import dataclass
 from glob import glob
 from typing import Callable, Optional
 
 import yt_dlp
+
+
+@dataclass
+class Download:
+    path: str
+    title: str = ""
+
+    def __fspath__(self) -> str:  # usable anywhere a path is expected
+        return self.path
+
+    def __str__(self) -> str:
+        return self.path
 
 
 _VIDEO_EXTENSIONS = ("mp4", "mkv", "webm", "mov", "m4v", "avi", "flv", "ts", "mpeg")
@@ -57,7 +70,7 @@ def _progress_hook(callback: Callable[[float, str], None]):
 
 
 def download_youtube(url: str, output_dir: str,
-                     progress_cb: Optional[Callable[[float, str], None]] = None) -> str:
+                     progress_cb: Optional[Callable[[float, str], None]] = None) -> Download:
     os.makedirs(output_dir, exist_ok=True)
     outtmpl = os.path.join(output_dir, "video.%(ext)s")
     cookies_path = os.environ.get("YTDLP_COOKIES")
@@ -87,11 +100,29 @@ def download_youtube(url: str, output_dir: str,
     if info is None:
         raise last_error
 
+    title = (info.get("title") or "").strip()
+    # Kept beside the video so a cached copy still knows what it is on a re-run.
+    if title:
+        try:
+            with open(os.path.join(output_dir, "title.txt"), "w", encoding="utf-8") as fh:
+                fh.write(title)
+        except OSError:
+            pass
+
     try:
-        return _resolve_downloaded_video(output_dir)
+        return Download(_resolve_downloaded_video(output_dir), title)
     except FileNotFoundError:
         ext = info.get("ext", "mp4")
         candidate = os.path.join(output_dir, f"video.{ext}")
         if os.path.exists(candidate):
-            return candidate
+            return Download(candidate, title)
         raise
+
+
+def cached_title(output_dir: str) -> str:
+    """The stored title for an already-downloaded video, if there is one."""
+    try:
+        with open(os.path.join(output_dir, "title.txt"), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
