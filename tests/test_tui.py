@@ -132,3 +132,23 @@ def test_download_hook_survives_an_unknown_total():
     hook = _progress_hook(lambda frac, detail: seen.append((frac, detail)))
     hook({"status": "downloading", "downloaded_bytes": 1_000_000})
     assert seen[0][0] == 0.0
+
+
+def test_the_format_ladder_exhausts_h264_before_anything_else():
+    """A codec this build cannot decode is worse than a smaller picture: OpenCV
+    reads AV1 as zero frames, which yielded a confidently empty tab sheet."""
+    from src.video.downloader import DECODABLE_RUNGS, FORMAT_LADDER
+
+    labels = [label for label, _ in FORMAT_LADDER]
+    selectors = [sel for _, sel in FORMAT_LADDER]
+    assert all("avc1" in s for s in selectors[:DECODABLE_RUNGS])
+    assert not any("avc1" in s for s in selectors[DECODABLE_RUNGS:])
+    assert labels[0].startswith("H.264")
+
+
+def test_a_refused_format_is_retried_before_being_abandoned():
+    """YouTube answers 403 to a good format under load. Dropping a rung on one
+    refusal trades a decodable video for an undecodable one over a hiccup."""
+    from src.video import downloader
+
+    assert downloader.ATTEMPTS_PER_FORMAT >= 2

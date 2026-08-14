@@ -1,9 +1,29 @@
+import logging
 import os
+import time
 from dataclasses import dataclass
 from glob import glob
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Tuple
 
 import yt_dlp
+
+
+logger = logging.getLogger(__name__)
+
+# Tried in order. Every H.264 rung is exhausted before anything unconstrained,
+# because a codec this build cannot decode is worse than a smaller picture:
+# OpenCV reads AV1 as zero frames, which used to yield a confidently empty sheet.
+FORMAT_LADDER: List[Tuple[str, str]] = [
+    ("H.264 up to 1080p",
+     "bestvideo[vcodec^=avc1][height<=1080]+bestaudio/best[vcodec^=avc1][height<=1080]"),
+    ("H.264 any size", "bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]"),
+    ("H.264 pre-muxed", "best[vcodec^=avc1]"),
+    ("any codec", "bestvideo*+bestaudio/best"),
+    ("whatever is offered", "best"),
+]
+DECODABLE_RUNGS = 3          # how many of the above are known-decodable
+ATTEMPTS_PER_FORMAT = 3
+RETRY_PAUSE_S = 4.0
 
 
 @dataclass
@@ -75,27 +95,36 @@ def download_youtube(url: str, output_dir: str,
     outtmpl = os.path.join(output_dir, "video.%(ext)s")
     cookies_path = os.environ.get("YTDLP_COOKIES")
 
-    # H.264 first: YouTube serves AV1 for many of these uploads and OpenCV's
-    # bundled FFmpeg cannot decode it, so the fastest download is useless. Fall
-    # back to unconstrained formats rather than failing outright.
-    formats = [
-        "bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]",
-        "bestvideo*+bestaudio/best",
-        "bestvideo+bestaudio/best",
-        "best",
-    ]
     last_error = None
     info = None
-    for fmt in formats:
-        opts = _build_opts(outtmpl, fmt, cookies_path)
-        if progress_cb:
-            opts["progress_hooks"] = [_progress_hook(progress_cb)]
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+    for rung, (label, fmt) in enumerate(FORMAT_LADDER):
+        # Retry a rung before abandoning it. YouTube answers 403 to a perfectly
+        # good format under load, and dropping to the next rung on one refusal
+        # trades a decodable video for an undecodable one over a passing hiccup.
+        for attempt in range(ATTEMPTS_PER_FORMAT):
+            opts = _build_opts(outtmpl, fmt, cookies_path)
+            if progress_cb:
+                opts["progress_hooks"] = [_progress_hook(progress_cb)]
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < ATTEMPTS_PER_FORMAT:
+                    logger.info("%s attempt %d failed (%s); retrying",
+                                label, attempt + 1, str(exc)[:120])
+                    time.sleep(RETRY_PAUSE_S)
+        if info is not None:
+            if rung:
+                # Say so. A silent downgrade is how a codec this build cannot
+                # read got accepted while the preference looked to be in force.
+                logger.warning("could not get %s (%s); fell back to %s",
+                               FORMAT_LADDER[0][0], str(last_error)[:120], label)
+            if rung >= DECODABLE_RUNGS:
+                logger.warning("%s may not be decodable here — if the read finds "
+                               "no frames, this is why", label)
             break
-        except Exception as exc:
-            last_error = exc
 
     if info is None:
         raise last_error
