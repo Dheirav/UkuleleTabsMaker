@@ -111,6 +111,10 @@ Open http://localhost:8000
 
 ## Notes
 - Best results come from clear tutorial videos with high-contrast tab overlays.
+- Paged mode runs at roughly 4x real time and holds memory flat in the length of
+  the video: one page's sampled frames at a time, not every page's. Sampling is
+  capped at `scan_stride_hz` (20/s) because nothing it looks for — a page turn, a
+  measure highlight — moves at frame rate.
 - The digit recognizer uses a lightweight CNN when weights are present; template matching is the fallback.
 
 ## CNN Digit Classifier

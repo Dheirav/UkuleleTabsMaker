@@ -14,7 +14,10 @@ import numpy as np
 from src.app.config import Config
 
 
-CONTENT_ROW_PROBES = 40
+# Enough probes to average out an intro card or a dark passage. Each one is a
+# seek, which makes the decoder restart from the preceding keyframe, so they are
+# the most expensive frames in the run.
+CONTENT_ROW_PROBES = 16
 
 
 @dataclass
@@ -79,16 +82,20 @@ def page_signature(strip: np.ndarray, config: Optional[Config] = None) -> np.nda
     """
     config = config or Config()
     ink = notation_ink(strip, config)
+    # Reduce to the signature's own resolution before anything else. The result
+    # is a page_profile_bins-wide profile whatever the input size, and the rule
+    # removal below costs width squared times height, so paying it at source
+    # resolution dominated the entire scan while buying no discrimination.
+    small = cv2.resize(ink, (config.page_profile_bins, config.page_signature_rows),
+                       interpolation=cv2.INTER_AREA)
     # Drop the staff rules first. They run the full width and are identical on
     # every page, so wherever a renderer draws them dark they dominate each
     # column and bury the glyph signal that actually distinguishes pages.
     rules = cv2.morphologyEx(
-        ink, cv2.MORPH_OPEN,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (max(ink.shape[1] // 20, 40), 1)))
-    glyph_ink = cv2.subtract(ink, rules).astype(np.float32) / 255.0
-    columns = glyph_ink.sum(axis=0).reshape(1, -1)
-    columns = cv2.resize(columns, (config.page_profile_bins, 1),
-                         interpolation=cv2.INTER_AREA).ravel()
+        small, cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (max(small.shape[1] // 20, 40), 1)))
+    glyph_ink = cv2.subtract(small, rules).astype(np.float32) / 255.0
+    columns = glyph_ink.sum(axis=0)
     norm = float(np.linalg.norm(columns))
     return columns / norm if norm > 0 else columns
 
@@ -125,7 +132,8 @@ def find_content_rows(video_path: str, config: Config, probes: int = CONTENT_ROW
 
 
 def measure_scroll(video_path: str, config: Config,
-                   on_step: Optional[Callable[[int, int], None]] = None) -> float:
+                   on_step: Optional[Callable[[int, int], None]] = None,
+                   content_rows: Optional[Tuple[int, int]] = None) -> float:
     """Median |horizontal drift| in px/s.
 
     Probes consecutive pairs spread across the whole video rather than a single
@@ -133,17 +141,18 @@ def measure_scroll(video_path: str, config: Config,
     animation, which says nothing about how the tab behaves later.
     """
     probes = max(config.paged_motion_probes, 2)
-    steps = CONTENT_ROW_PROBES + probes
-    y0, y1 = find_content_rows(
+    steps = (0 if content_rows else CONTENT_ROW_PROBES) + probes
+    y0, y1 = content_rows or find_content_rows(
         video_path, config, CONTENT_ROW_PROBES,
         (lambda i: on_step(i, steps)) if on_step else None)
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
     drifts = []
+    base = steps - probes
     for probe, start in enumerate(np.linspace(0, max(total - 3, 0), probes).astype(int)):
         if on_step:
-            on_step(CONTENT_ROW_PROBES + probe + 1, steps)
+            on_step(base + probe + 1, steps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(start))
         prev = None
         for _ in range(config.paged_motion_pair_frames):
@@ -169,23 +178,47 @@ def measure_scroll(video_path: str, config: Config,
 
 
 def is_paged(video_path: str, config: Config,
-             on_step: Optional[Callable[[int, int], None]] = None) -> bool:
+             on_step: Optional[Callable[[int, int], None]] = None,
+             content_rows: Optional[Tuple[int, int]] = None) -> bool:
     if config.paged_mode == "paged":
         return True
     if config.paged_mode == "scrolling":
         return False
-    return measure_scroll(video_path, config, on_step) <= config.paged_max_scroll_px_s
+    scroll = measure_scroll(video_path, config, on_step, content_rows)
+    return scroll <= config.paged_max_scroll_px_s
+
+
+def sample_stride(video_fps: float, config: Config) -> int:
+    """How many video frames one scan sample covers.
+
+    Nothing the scan looks for moves at frame rate: a page is on screen for
+    seconds and the shortest measure for a third of one. Sampling at a fixed rate
+    keeps the same time resolution on a 60fps upload as on a 30fps one, and
+    leaves the decoder skipping frames it never has to convert or copy.
+    """
+    if config.scan_stride_hz <= 0:
+        return 1
+    return max(1, int(video_fps // config.scan_stride_hz))
 
 
 def scan(video_path: str, config: Config,
-         on_frame: Optional[Callable[[int, int], None]] = None) -> Dict:
-    """Single streaming pass: page signatures, highlight spans, playhead x."""
-    y0, y1 = find_content_rows(video_path, config)
+         on_frame: Optional[Callable[[int, int], None]] = None,
+         content_rows: Optional[Tuple[int, int]] = None) -> Dict:
+    """Single streaming pass: page signatures, highlight spans, playhead x.
+
+    Indices in the returned arrays count *samples*, not video frames, and "fps"
+    is the sample rate, so every downstream time is index / fps as before. The
+    video's own frame rate and the stride are carried alongside for the one job
+    that needs them: seeking the file again to composite pages.
+    """
+    y0, y1 = content_rows or find_content_rows(video_path, config)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         cap.release()
         raise FileNotFoundError(f"Could not open video: {video_path}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    stride = sample_stride(video_fps, config)
+    fps = video_fps / stride
     expected = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
 
     sig_prev = None
@@ -197,11 +230,20 @@ def scan(video_path: str, config: Config,
     spans: List[Optional[Tuple[int, int]]] = []
     heads: List[int] = []
     idx = 0
+    frame_no = 0
     scale = 1.0
     while True:
+        # Frames between samples still have to be decoded, but grab() leaves out
+        # the colour conversion and copy that read() would spend on them.
+        if frame_no % stride:
+            if not cap.grab():
+                break
+            frame_no += 1
+            continue
         ret, frame = cap.read()
         if not ret:
             break
+        frame_no += 1
         strip = frame[y0:y1] if y1 > y0 else frame
         # Per-frame work runs on a width-capped copy: the signature is reduced to
         # 256px anyway, and column positions are scaled back to source pixels.
@@ -243,9 +285,10 @@ def scan(video_path: str, config: Config,
                      if ph.max() > strip.shape[0] * 0.3 else -1)
         idx += 1
         if on_frame:
-            on_frame(idx, max(expected, idx))
+            on_frame(frame_no, max(expected, frame_no))
     cap.release()
-    return {"fps": fps, "y0": y0, "y1": y1, "n": idx, "scan_scale": scale,
+    return {"fps": fps, "video_fps": video_fps, "stride": stride,
+            "y0": y0, "y1": y1, "n": idx, "scan_scale": scale,
             "diffs": diffs, "spans": spans, "heads": heads,
             "boundaries": boundaries,
             "signatures": np.asarray(signatures, dtype=np.float32) if signatures else None}
@@ -311,70 +354,118 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
                     on_frame: Optional[Callable[[int, int], None]] = None) -> None:
     """Median over each page's frames removes the moving playhead and highlight."""
     y0, y1 = scan_data["y0"], scan_data["y1"]
+    # Pages are bounded in scan samples; the file is read in video frames.
+    stride = int(scan_data.get("stride", 1))
 
     # Sample indices per page, gathered in one sequential pass. Seeking to an
     # arbitrary frame makes the decoder restart from the preceding keyframe, so
     # per-page seeking costs far more than simply decoding the file in order.
-    wanted: Dict[int, List[Page]] = {}
+    wanted: Dict[int, Page] = {}
     for page in pages:
         count = page.last_frame - page.first_frame + 1
         idxs = np.linspace(page.first_frame, page.last_frame,
                            min(count, config.page_composite_samples)).astype(int)
         for i in idxs:
-            wanted.setdefault(int(i), []).append(page)
+            wanted.setdefault(int(i) * stride, page)
+    if not wanted:
+        return
 
     cap = cv2.VideoCapture(video_path)
-    last_wanted = max(wanted) if wanted else 0
-    # Pages are contiguous and ordered, so a page can be finished and freed as
-    # soon as the read position passes it: only one page's frames are ever held.
-    buffers: Dict[int, List[np.ndarray]] = {}
-    pending = sorted(pages, key=lambda p: p.first_frame)
-    done: List[Tuple[Page, List[np.ndarray]]] = []
+    last_wanted = max(wanted)
+    # Pages are contiguous and ordered, so only one is ever being filled: each is
+    # composited and its frames released the moment the next page's first sample
+    # arrives. Banking every page's frames until the end instead costs
+    # pages x samples x frame size — gigabytes on a five-minute video.
+    #
+    # One buffer, reused. Allocating and freeing a fresh stack per page churns
+    # tens of megabytes at a time, which glibc stops returning to the OS after
+    # the first few rounds, so resident memory climbs even though nothing is held.
+    buffer: Optional[np.ndarray] = None
+    current: Optional[Page] = None
+    filled = 0
     idx = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        for page in wanted.get(idx, ()):
+    while idx <= last_wanted:
+        # Frames nobody asked for still have to be decoded — later frames depend
+        # on them — but grab() skips the colour conversion and copy that read()
+        # would spend on them, which is most of the per-frame cost.
+        page = wanted.get(idx)
+        if page is not None:
+            ret, frame = cap.read()
+            if not ret:
+                break
             strip = frame[y0:y1] if y1 > y0 else frame
-            buffers.setdefault(page.index, []).append(strip.copy())
-        while pending and pending[0].last_frame < idx:
-            finished = pending.pop(0)
-            done.append((finished, buffers.pop(finished.index, [])))
+            if buffer is None:
+                buffer = np.empty((config.page_composite_samples,) + strip.shape,
+                                  dtype=np.uint8)
+            if page is not current:
+                if current is not None:
+                    _finish_page(current, buffer[:filled], config)
+                current, filled = page, 0
+            if filled < len(buffer):
+                buffer[filled] = strip
+                filled += 1
+        elif not cap.grab():
+            break
         idx += 1
         if on_frame:
             on_frame(min(idx, last_wanted), last_wanted)
-        if idx > last_wanted:
-            break  # every sampled frame is in hand; the tail has nothing to give
     cap.release()
-    for page in pending:
-        done.append((page, buffers.pop(page.index, [])))
+    if current is not None and buffer is not None:
+        _finish_page(current, buffer[:filled], config)
 
-    for page, stack in done:
-        if not stack:
-            continue
-        composite = np.median(np.stack(stack), axis=0).astype(np.uint8)
-        # A span that straddles a page turn medians into a ghost of two pages.
-        # Real pages hold still, so their frames agree with the composite; measure
-        # that agreement and refuse to read a page that does not hold.
-        # Jaccard distance on the ink, not raw pixel disagreement: notation covers
-        # only a few percent of a page, so a half-ghosted composite still agrees on
-        # almost every (blank) pixel. Normalising by ink area makes the difference
-        # between "holds still" and "straddles a turn" plain.
-        reference = notation_ink(composite, config) > 0
-        residuals = []
-        for frame in stack:
-            ink = notation_ink(frame, config) > 0
-            union = float((ink | reference).sum())
-            if union > 0:
-                residuals.append(float((ink ^ reference).sum()) / union)
-        page.instability = float(np.mean(residuals)) if residuals else 1.0
-        # Kept as a diagnostic, not a gate. Rejecting an unstable composite double
-        # -gates what the classifier already handles: it scores every glyph and
-        # declines the ones it cannot match, so a ghosted region yields nothing
-        # while the clean interior still reads. Gating here as well threw away
-        # whole pages for contamination confined to their margins.
-        page.composite = composite
+
+def _finish_page(page: Page, stack, config: Config) -> None:
+    """Median the page's frames into one clean image, then drop the frames."""
+    frames = np.asarray(stack)
+    if len(frames) == 0:
+        return
+    # Sample the probes first: partitioning reorders values per pixel, so
+    # afterwards no row of the buffer is a real frame any more.
+    probes = [_shrink(frames[i], config)
+              for i in np.linspace(0, len(frames) - 1, min(len(frames), 8)).astype(int)]
+    # An odd count lets the middle element stand in for the median directly,
+    # skipping the float conversion and averaging np.median does for an even one.
+    if len(frames) % 2 == 0 and len(frames) > 1:
+        frames = frames[:-1]
+    middle = len(frames) // 2
+    frames.partition(middle, axis=0)  # in place, so no per-page temporary
+    composite = frames[middle].copy()
+    page.instability = _instability(composite, probes, config)
+    # The composite is kept whatever its instability. Rejecting an unstable one
+    # double-gates what the classifier already handles: it scores every glyph and
+    # declines the ones it cannot match, so a ghosted region yields nothing while
+    # the clean interior still reads. Gating here as well threw away whole pages
+    # for contamination confined to their margins.
+    page.composite = composite
+
+
+def _shrink(image: np.ndarray, config: Config, factor: int = 2) -> np.ndarray:
+    return cv2.resize(image, (max(image.shape[1] // factor, 1),
+                              max(image.shape[0] // factor, 1)),
+                      interpolation=cv2.INTER_AREA)
+
+
+def _instability(composite: np.ndarray, probes: List[np.ndarray],
+                 config: Config) -> float:
+    """How far the page moved while it was on screen, as a Jaccard distance.
+
+    A span that straddles a page turn medians into a ghost of two pages, and this
+    says how badly. Jaccard on the ink, not raw pixel disagreement: notation
+    covers only a few percent of a page, so a half-ghosted composite still agrees
+    on almost every (blank) pixel.
+
+    Reported, not acted on, so it is measured from a handful of frames at reduced
+    size. Checking every frame at full resolution cost four times the compositing
+    it was describing.
+    """
+    reference = notation_ink(_shrink(composite, config), config) > 0
+    residuals = []
+    for probe in probes:
+        ink = notation_ink(probe, config) > 0
+        union = float((ink | reference).sum())
+        if union > 0:
+            residuals.append(float((ink ^ reference).sum()) / union)
+    return float(np.mean(residuals)) if residuals else 1.0
 
 
 def track_measures(scan_data: Dict, config: Config) -> List[MeasureSpan]:

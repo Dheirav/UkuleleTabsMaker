@@ -101,7 +101,8 @@ def crop_for(video_path, scan, pages, measure, config):
         source = page.composite
     else:
         cap = cv2.VideoCapture(video_path)
-        mid = int((measure.t0 + measure.t1) / 2 * scan["fps"])
+        # Seeking needs the video's own frame rate; scan["fps"] is its sample rate.
+        mid = int((measure.t0 + measure.t1) / 2 * scan.get("video_fps", scan["fps"]))
         cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
         ok, frame = cap.read()
         cap.release()

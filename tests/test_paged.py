@@ -372,6 +372,54 @@ def test_unstable_composites_are_kept_for_the_classifier_to_judge():
     import inspect
     from src.vision import paged as paged_module
 
-    source = inspect.getsource(paged_module.composite_pages)
+    source = inspect.getsource(paged_module._finish_page)
     assert "page.composite = composite" in source
-    assert "if page.instability <= config.page_max_instability" not in source
+    assert "config.page_max_instability" not in source
+
+
+def _write_pages_video(path, pages=6, frames_per_page=8, size=(160, 60)):
+    """A tiny video that turns a page every few frames."""
+    width, height = size
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 10.0,
+                             (width, height))
+    for index in range(pages):
+        frame = np.full((height, width, 3), 255, np.uint8)
+        cv2.putText(frame, str(index), (10 + index * 20, 45),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
+        for _ in range(frames_per_page):
+            writer.write(frame)
+    writer.release()
+    return pages, frames_per_page
+
+
+def test_pages_are_composited_as_each_finishes_not_all_at_the_end(tmp_path, monkeypatch):
+    """Holding every page's sampled frames until the read ends costs
+    pages x samples x frame size — gigabytes on a five-minute video, enough to
+    take the machine down. Each page must be composited and freed in flight."""
+    from src.vision import paged as paged_module
+
+    path = tmp_path / "pages.mp4"
+    count, per_page = _write_pages_video(path)
+    config = Config()
+    pages = [Page(index=i, first_frame=i * per_page, last_frame=(i + 1) * per_page - 1,
+                  t0=0.0, t1=1.0) for i in range(count)]
+    scan_data = {"y0": 0, "y1": 60}
+
+    seen_frames, finished = [], []
+    real_finish = paged_module._finish_page
+
+    def spy(page, stack, config_):
+        finished.append((page.index, seen_frames[-1] if seen_frames else 0))
+        real_finish(page, stack, config_)
+
+    monkeypatch.setattr(paged_module, "_finish_page", spy)
+    paged_module.composite_pages(str(path), pages, scan_data, config,
+                                 lambda i, total: seen_frames.append(i))
+
+    assert all(p.composite is not None for p in pages)
+    last_frame = seen_frames[-1]
+    # The first page must be done and its frames released while most of the file
+    # is still unread, not banked up for a final pass over everything.
+    assert finished[0][0] == 0
+    assert finished[0][1] < last_frame / 2
+    assert [index for index, _ in finished] == list(range(count))

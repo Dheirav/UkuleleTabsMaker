@@ -139,13 +139,15 @@ def run_paged_pipeline(
     config: Config,
     source: str,
     progress: Progress,
+    content_rows: Optional[tuple] = None,
 ) -> tuple:
     """Static paged tab: read each page once, take timing from the player's own
     highlight and playhead rather than estimating scroll speed."""
     progress.stage("scan")
     scan_data = paged.scan(
         video_path, config,
-        lambda i, total: progress.tick(i / max(total, 1), f"frame {i} of {total}"))
+        lambda i, total: progress.tick(i / max(total, 1), f"frame {i} of {total}"),
+        content_rows)
 
     pages = paged.segment_pages(scan_data, config)
     duration = scan_data["n"] / scan_data["fps"]
@@ -194,6 +196,9 @@ def run_paged_pipeline(
         "playhead_frames": float(sum(1 for h in scan_data["heads"] if h >= 0)),
         "measures_tracked": float(sum(len(p.measures) for p in pages)),
         "glyph_font_fit": float(classifier.fit),
+        # Worst page ghosting seen. High means a page boundary landed mid-turn.
+        "worst_page_instability": float(max((p.instability for p in pages), default=0.0)),
+        "scan_stride": float(scan_data.get("stride", 1)),
         **coverage,
     }
     return sheet, stats
@@ -216,12 +221,17 @@ def run_pipeline(
 
     source = url if url else (video_path or "local")
     progress.stage("probe", "checking whether the tab scrolls")
+    # Found once and shared: locating the content rows costs 40 seeks, and both
+    # the scroll probe and the scan need the same answer.
+    content_rows = paged.find_content_rows(video_path, config)
     paged_video = paged.is_paged(
         video_path, config,
-        lambda i, total: progress.tick(i / max(total, 1), f"probe {i} of {total}"))
+        lambda i, total: progress.tick(i / max(total, 1), f"probe {i} of {total}"),
+        content_rows)
 
     if paged_video:
-        sheet, stats = run_paged_pipeline(video_path, config, source, progress)
+        sheet, stats = run_paged_pipeline(video_path, config, source, progress,
+                                          content_rows)
         progress.stage("write", "txt · pdf · json")
         write_outputs(sheet, config, stats)
         progress.done()

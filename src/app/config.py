@@ -60,11 +60,16 @@ class Config:
     paged_max_scroll_px_s: float = 4.0
     page_change_threshold: float = 0.10
     page_profile_bins: int = 512
+    page_signature_rows: int = 64
+    scan_stride_hz: float = 20.0
     page_confirm_frames: int = 3
     page_cut_merge_frames: int = 4
     page_guard_frames: int = 3
     page_min_frames: int = 5
-    page_composite_samples: int = 40
+    # Odd, so the median is one of the samples rather than a mean of two. The
+    # count only has to outvote the playhead and highlight at each pixel, which
+    # is a fraction of the page's frames however many are taken.
+    page_composite_samples: int = 21
     page_max_instability: float = 0.20
     page_ink_threshold: int = 170
     ink_max_saturation: int = 60
