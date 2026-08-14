@@ -16,3 +16,5 @@ models/*.pth
 benchmark/videos/
 benchmark/pages/
 benchmark/results/
+benchmark/measure_crops/
+benchmark/timing_crops/

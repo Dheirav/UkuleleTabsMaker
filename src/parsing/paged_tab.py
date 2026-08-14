@@ -13,15 +13,26 @@ from src.models.schema import Note, ReconstructionResult
 
 
 def _playhead_times(scan_data: Dict, page, config: Config) -> Optional[List]:
-    """(x, t) samples of the cursor while this page was on screen."""
+    """(x, t) samples of the cursor while this page was on screen.
+
+    One entry per x, holding the first time the cursor was seen there. The cursor
+    rests on the same pixel for several frames, so the raw samples repeat an x
+    many times over — 84% of them at full frame rate — and np.interp needs its
+    x values strictly increasing. Fed duplicates it reads off the last one, which
+    dates every note to the moment the cursor *left* it rather than arrived, and
+    grows worse the more finely the video is sampled.
+    """
     heads, fps = scan_data["heads"], scan_data["fps"]
-    samples = [(heads[i], i / fps)
-               for i in range(page.first_frame, min(page.last_frame + 1, len(heads)))
-               if heads[i] >= 0]
-    if len(samples) < config.playhead_min_samples:
+    arrival: Dict[int, float] = {}
+    for i in range(page.first_frame, min(page.last_frame + 1, len(heads))):
+        if heads[i] < 0:
+            continue
+        time = i / fps
+        if heads[i] not in arrival or time < arrival[heads[i]]:
+            arrival[heads[i]] = time
+    if len(arrival) < config.playhead_min_samples:
         return None
-    samples.sort()
-    return samples
+    return sorted(arrival.items())
 
 
 def _time_from_playhead(x: float, samples: List) -> Optional[float]:

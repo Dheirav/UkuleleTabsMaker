@@ -160,29 +160,47 @@ src/
 Recognition accuracy is measured against hand-checked ground truth so that
 changes to the vision code can be scored instead of eyeballed.
 
+There are two harnesses, because *which* notes and *when* they sound fail in
+different ways and a change can easily improve one while quietly hurting the
+other.
+
+### Which notes — `scripts/measure_truth.py`
 ```bash
-python scripts/fetch_benchmark.py            # download clips listed in benchmark/clips.json
-python scripts/benchmark.py dump             # page composites + montage.png per clip
-python scripts/benchmark.py stub  <clip>     # seed a truth file from detections
-python scripts/benchmark.py score            # score against benchmark/truth/
+python scripts/fetch_benchmark.py                       # download benchmark/clips.json
+python scripts/measure_truth.py dump  [clip ...]        # one crop per highlighted measure
+python scripts/measure_truth.py stub  [--blank] [--sample N] [clip ...]
+python scripts/measure_truth.py score [clip ...]        # against benchmark/measures/
 ```
+Truth is keyed to the measures the player highlighted rather than to page
+indices, so it does not move when page segmentation changes, and a measure the
+reader never read still counts as missing. Label with `--blank` so the truth is
+written blind instead of being a review of the reader's own guesses. `score`
+aligns the read and true `(string, fret)` sequences by edit distance, so one
+dropped glyph costs one deletion rather than smearing into a run of
+substitutions, and it warns for any file still marked unverified.
 
-Workflow: `dump` writes one composite per page plus a `montage.png`; `stub`
-seeds `benchmark/truth/<clip>.json` from the current detections; you then check
-each page against the montage, correct the sequences, and set `"verified": true`.
-`score` reports results and warns for any truth file still marked unverified, so
-a stub can never be mistaken for a checked label.
+### When they sound — `scripts/timing_truth.py`
+```bash
+python scripts/timing_truth.py stub  [--sample N] [clip ...]
+python scripts/timing_truth.py dump  [clip ...]              # crops to check truth against
+python scripts/timing_truth.py score [--stride-hz N] [clip ...]
+```
+The reference is the player's blue cursor read at full frame rate: a note sounds
+when the cursor crosses it. That is checkable in a single frame — `dump` writes
+one crop per truth note, and the cursor should be sitting on the note — and it is
+a different visual cue from the measure highlight, so it is not merely restating
+what the reader assumed.
 
-Scoring aligns the detected and true `(string_index, fret)` sequences per page by
-edit distance, so one dropped glyph costs one deletion instead of smearing into a
-run of substitutions. Videos are H.264-only: OpenCV cannot reliably decode AV1 on
-many platforms, and a benchmark that silently fails to decode is worse than one
-that refuses to.
+`score` reports median and 90th-percentile onset error against that reference,
+and `--stride-hz` re-runs the reader at a different scan rate so a sampling
+change can be judged rather than guessed at. Alongside it reports a metrical
+figure: how close the notes sit to a regular division of the bar, with the
+division searched rather than assumed. Bar lines come from the highlight, not the
+cursor, so that figure witnesses errors the cursor and reader would otherwise
+share — but it is a weak instrument, and the onset error is the number to trust.
 
-**Timing is deliberately not scored.** The measure highlight is itself the timing
-source, so labelling onsets from it would be circular. The harness reports
-structural diagnostics instead — monotonicity, duplicate notes, fret range, and
-which strings were used.
+Videos are H.264-only: OpenCV cannot reliably decode AV1 on many platforms, and a
+benchmark that silently fails to decode is worse than one that refuses to.
 
 `benchmark/videos/`, `pages/`, and `results/` are gitignored; `clips.json` and
 `truth/` are the versioned parts.

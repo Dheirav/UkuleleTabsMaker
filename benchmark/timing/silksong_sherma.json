@@ -1,0 +1,201 @@
+{
+  "verified": true,
+  "schema": "timing/1",
+  "source": "playhead crossing at full frame rate",
+  "video_fps": 60.0,
+  "notes": [
+    {
+      "time": 1.2333,
+      "frame": 74,
+      "x": 301,
+      "string": 1,
+      "fret": 1,
+      "page": 1
+    },
+    {
+      "time": 2.4333,
+      "frame": 146,
+      "x": 615,
+      "string": 1,
+      "fret": 1,
+      "page": 1
+    },
+    {
+      "time": 4.4167,
+      "frame": 265,
+      "x": 468,
+      "string": 0,
+      "fret": 0,
+      "page": 2
+    },
+    {
+      "time": 6.6167,
+      "frame": 397,
+      "x": 383,
+      "string": 1,
+      "fret": 1,
+      "page": 3
+    },
+    {
+      "time": 8.9333,
+      "frame": 536,
+      "x": 305,
+      "string": 1,
+      "fret": 1,
+      "page": 3
+    },
+    {
+      "time": 12.15,
+      "frame": 729,
+      "x": 462,
+      "string": 1,
+      "fret": 1,
+      "page": 4
+    },
+    {
+      "time": 14.2,
+      "frame": 852,
+      "x": 298,
+      "string": 0,
+      "fret": 0,
+      "page": 5
+    },
+    {
+      "time": 16.0667,
+      "frame": 964,
+      "x": 770,
+      "string": 0,
+      "fret": 3,
+      "page": 5
+    },
+    {
+      "time": 17.65,
+      "frame": 1059,
+      "x": 543,
+      "string": 3,
+      "fret": 0,
+      "page": 6
+    },
+    {
+      "time": 22.0833,
+      "frame": 1325,
+      "x": 383,
+      "string": 1,
+      "fret": 1,
+      "page": 7
+    },
+    {
+      "time": 23.4333,
+      "frame": 1406,
+      "x": 698,
+      "string": 1,
+      "fret": 1,
+      "page": 7
+    },
+    {
+      "time": 25.35,
+      "frame": 1521,
+      "x": 553,
+      "string": 0,
+      "fret": 1,
+      "page": 8
+    },
+    {
+      "time": 27.5833,
+      "frame": 1655,
+      "x": 462,
+      "string": 1,
+      "fret": 1,
+      "page": 9
+    },
+    {
+      "time": 28.9167,
+      "frame": 1735,
+      "x": 778,
+      "string": 2,
+      "fret": 0,
+      "page": 9
+    },
+    {
+      "time": 30.85,
+      "frame": 1851,
+      "x": 619,
+      "string": 1,
+      "fret": 1,
+      "page": 10
+    },
+    {
+      "time": 32.5833,
+      "frame": 1955,
+      "x": 543,
+      "string": 2,
+      "fret": 0,
+      "page": 11
+    },
+    {
+      "time": 35.6833,
+      "frame": 2141,
+      "x": 543,
+      "string": 3,
+      "fret": 0,
+      "page": 12
+    },
+    {
+      "time": 37.3833,
+      "frame": 2243,
+      "x": 305,
+      "string": 1,
+      "fret": 1,
+      "page": 12
+    },
+    {
+      "time": 41.1833,
+      "frame": 2471,
+      "x": 619,
+      "string": 1,
+      "fret": 1,
+      "page": 13
+    },
+    {
+      "time": 43.15,
+      "frame": 2589,
+      "x": 468,
+      "string": 0,
+      "fret": 0,
+      "page": 14
+    },
+    {
+      "time": 45.35,
+      "frame": 2721,
+      "x": 383,
+      "string": 1,
+      "fret": 1,
+      "page": 15
+    },
+    {
+      "time": 47.6167,
+      "frame": 2857,
+      "x": 305,
+      "string": 1,
+      "fret": 1,
+      "page": 15
+    },
+    {
+      "time": 50.85,
+      "frame": 3051,
+      "x": 462,
+      "string": 1,
+      "fret": 1,
+      "page": 16
+    },
+    {
+      "time": 52.8167,
+      "frame": 3169,
+      "x": 932,
+      "string": 0,
+      "fret": 0,
+      "page": 17
+    }
+  ],
+  "verified_how": "all 24 crops inspected: the cursor sits on the labelled note in each"
+}
