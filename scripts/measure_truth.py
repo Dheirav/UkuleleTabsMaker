@@ -1,7 +1,7 @@
 """Measure-keyed ground truth for the paged tab reader.
 
   python scripts/measure_truth.py dump  [id ...]   # one crop per highlighted measure
-  python scripts/measure_truth.py stub  [--blank] [id ...]   # seed truth to label
+  python scripts/measure_truth.py stub  [--blank] [--sample N] [id ...]  # seed truth
   python scripts/measure_truth.py score [id ...]   # score against benchmark/measures/
 
 Truth is keyed to the measures the player highlighted, not to page indices. The
@@ -16,6 +16,7 @@ missing music is counted as missing.
 """
 import json
 import os
+import random
 import sys
 from typing import Dict, List, Tuple
 
@@ -161,7 +162,7 @@ def cmd_dump(clips, config):
               f" -> {out_dir}")
 
 
-def cmd_stub(clips, config, blank=False):
+def cmd_stub(clips, config, blank=False, sample=0):
     """Seed a truth file.
 
     Seeding from detections turns labelling into a review of the reader's own
@@ -189,13 +190,22 @@ def cmd_stub(clips, config, blank=False):
                   f"seeded from detections")
             continue
         meta = json.load(open(src))["measures"]
+        if sample and sample < len(meta):
+            # A random sample estimates accuracy as well as an exhaustive pass, at a
+            # fraction of the labelling. It also keeps the fixtures a scattered
+            # sample of each piece rather than a complete transcription of it.
+            rng = random.Random(f"{clip['id']}/{sample}")  # stable across re-runs
+            chosen = sorted(rng.sample(range(len(meta)), sample))
+            meta = [meta[i] for i in chosen]
         json.dump({"verified": False, "schema": "measures/1",
                    "blind": bool(blank), "heldout": bool(clip.get("heldout")),
+                   "sampled": bool(sample), "sample_size": len(meta),
                    "measures": [{"index": m["index"], "t0": m["t0"], "t1": m["t1"],
                                  "notes": [] if blank else m["detected"]} for m in meta]},
                   open(dst, "w"), indent=2)
         how = "blank (blind)" if blank else "seeded from detections"
-        print(f"  {clip['id']}: {len(meta)} measures, {how}")
+        scope = f"sample of {len(meta)}" if sample else f"all {len(meta)}"
+        print(f"  {clip['id']}: {scope} measures, {how}")
 
 
 def align(truth: List[Tuple], hyp: List[Tuple]) -> Dict[str, int]:
@@ -285,12 +295,17 @@ def main():
         raise SystemExit(2)
     command, argv = sys.argv[1], sys.argv[2:]
     blank = "--blank" in argv
+    sample = 0
+    if "--sample" in argv:
+        i = argv.index("--sample")
+        sample = int(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
     argv = [a for a in argv if a != "--blank"]
     clips = load_clips(argv)
     if not clips:
         raise SystemExit("no clips available; run scripts/fetch_benchmark.py")
     if command == "stub":
-        cmd_stub(clips, Config(), blank=blank)
+        cmd_stub(clips, Config(), blank=blank, sample=sample)
     else:
         {"dump": cmd_dump, "score": cmd_score}[command](clips, Config())
 
