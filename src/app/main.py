@@ -20,7 +20,7 @@ from src.parsing.reconstruct import reconstruct_notes, reconstruct_chunked_notes
 from src.parsing.parser import parse_measures
 from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
-from src.vision.page_digits import collect_sample_glyphs, read_page
+from src.vision.page_digits import collect_sample_glyphs, read_page_detail
 from src.parsing.paged_tab import measure_coverage, notes_from_pages
 from src.output.json import write_json
 from src.output.pdf import write_pdf
@@ -172,7 +172,8 @@ def run_paged_pipeline(
     read_progress = progress.counter(len(pages))
     for done, page in enumerate(pages, start=1):
         if page.composite is not None:
-            page.digits = read_page(page.composite, classifier, config)
+            page.digits, page.declined = read_page_detail(
+                page.composite, classifier, config)
         read_progress(done)
     progress.note(f"font {font_name} · {sum(len(p.digits) for p in pages)} glyphs")
 

@@ -86,9 +86,17 @@ def measure_coverage(pages) -> Dict[str, float]:
     The denominator counts highlight spans, and one musical measure can appear as
     two spans when a page turns mid-measure, so treat this as a floor on coverage
     rather than an exact fraction of the score.
+
+    A bar can also hold no note to print and still be right. A tie — a fret in
+    brackets — is a note still ringing, not one to pluck, and the reader declines
+    it deliberately. Counting those as music lost blamed the reader for being
+    correct, and read as one bar in six missing on a slow piece full of held
+    notes. They are counted apart, and a bar where nothing at all was found is
+    the only kind that means something went wrong.
     """
     total = 0
     covered = 0
+    held = 0
     empty_pages = 0
     for page in pages:
         if not page.measures:
@@ -99,10 +107,16 @@ def measure_coverage(pages) -> Dict[str, float]:
             total += 1
             if any(measure.x0 <= d.x_center <= measure.x1 for d in page.digits):
                 covered += 1
+            elif any(measure.x0 <= x <= measure.x1 for x in getattr(page, "declined", ())):
+                held += 1
+    accounted = covered + held
     return {
         "measures_highlighted": float(total),
         "measures_with_notes": float(covered),
-        "coverage": float(covered / total) if total else 0.0,
+        "measures_held_only": float(held),
+        "measures_lost": float(total - accounted),
+        "coverage": float(accounted / total) if total else 0.0,
+        "note_coverage": float(covered / total) if total else 0.0,
         "pages_without_digits": float(empty_pages),
     }
 

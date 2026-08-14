@@ -104,15 +104,29 @@ def _group_multidigit(components, gap: int):
 
 
 def read_page(composite: np.ndarray, classifier, config: Config) -> List[DigitDetection]:
+    """The frets on a page. See read_page_detail for what it declined."""
+    return read_page_detail(composite, classifier, config)[0]
+
+
+def read_page_detail(composite: np.ndarray, classifier, config: Config):
+    """(frets, where it declined) — the second is what makes a blank bar legible.
+
+    A tie is drawn "(4)", and the brackets group with the digit as though it were
+    a multi-digit fret. Neither bracket classifies, so the group is dropped whole
+    — which is right, since a tie is a note still ringing rather than one to
+    pluck. But a bar holding only a tie then looks identical to a bar the reader
+    failed on, and it is not: one had nothing to print, the other lost music.
+    """
     gray = cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY)
     lines = find_string_lines(gray, config)
     components = glyph_components(strip_rules(gray, config), config)
     if not components:
-        return []
+        return [], []
     median_w = float(np.median([c[2] for c in components]))
     gap = max(int(median_w * config.glyph_merge_gap_ratio), 3)
 
     detections: List[DigitDetection] = []
+    declined: List[int] = []
     for group in _group_multidigit(components, gap):
         digits, scores = [], []
         for comp in group:
@@ -122,10 +136,14 @@ def read_page(composite: np.ndarray, classifier, config: Config) -> List[DigitDe
                 break
             digits.append(value)
             scores.append(score)
+        left = min(c[0] for c in group)
+        right = max(c[0] + c[2] for c in group)
         if not digits:
+            declined.append(int((left + right) / 2))
             continue
         value = int("".join(str(d) for d in digits))
         if value > config.max_fret:
+            declined.append(int((left + right) / 2))
             continue
         x = min(c[0] for c in group)
         y = min(c[1] for c in group)
@@ -141,7 +159,7 @@ def read_page(composite: np.ndarray, classifier, config: Config) -> List[DigitDe
             string_index=string_index,
             x_center=int((x + x1) / 2),
         ))
-    return detections
+    return detections, declined
 
 
 def collect_sample_glyphs(pages, config: Config, limit: int = 400) -> List[np.ndarray]:

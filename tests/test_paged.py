@@ -560,3 +560,43 @@ def test_a_still_page_reports_no_cursor():
     page = np.full((80, 400, 3), 240, np.uint8)
     x, _ = playhead_by_motion(page, page.copy(), Config())
     assert x == -1
+
+
+def _page_with_declined(measures, digits, declined):
+    page = Page(index=0, first_frame=0, last_frame=10, t0=0.0, t1=1.0)
+    page.measures = measures
+    page.digits = digits
+    page.declined = declined
+    return page
+
+
+def test_a_bar_holding_only_a_tie_is_not_counted_as_music_lost():
+    """A tie is a note still ringing, not one to pluck, so the reader declines it
+    on purpose. Counting those as lost blamed the reader for being right, and read
+    as one bar in six missing on a slow piece full of held notes."""
+    from src.parsing.paged_tab import measure_coverage
+
+    played = MeasureSpan(0, 100, 0.0, 1.0)
+    tied = MeasureSpan(200, 300, 1.0, 2.0)
+    note = DigitDetection(value=3, bbox=(10, 0, 8, 12), confidence=1.0,
+                          string_index=0, x_center=50)
+    page = _page_with_declined([played, tied], [note], [250])
+    cov = measure_coverage([page])
+    assert cov["measures_with_notes"] == 1
+    assert cov["measures_held_only"] == 1
+    assert cov["measures_lost"] == 0
+    assert cov["coverage"] == 1.0        # nothing was lost
+    assert cov["note_coverage"] == 0.5   # but only half the bars print a note
+
+
+def test_a_bar_where_nothing_was_found_still_counts_as_lost():
+    """The one kind of empty bar that means something went wrong."""
+    from src.parsing.paged_tab import measure_coverage
+
+    played = MeasureSpan(0, 100, 0.0, 1.0)
+    empty = MeasureSpan(200, 300, 1.0, 2.0)
+    note = DigitDetection(value=3, bbox=(10, 0, 8, 12), confidence=1.0,
+                          string_index=0, x_center=50)
+    cov = measure_coverage([_page_with_declined([played, empty], [note], [])])
+    assert cov["measures_lost"] == 1
+    assert cov["coverage"] == 0.5

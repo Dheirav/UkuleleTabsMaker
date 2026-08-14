@@ -38,6 +38,10 @@ class Page:
     composite: Optional[np.ndarray] = None
     measures: List[MeasureSpan] = field(default_factory=list)
     digits: List = field(default_factory=list)
+    # x positions where notation was found and declined — a tie, a marking, or a
+    # glyph that could not be read. Distinguishes a bar with nothing to print
+    # from a bar whose music was lost.
+    declined: List[int] = field(default_factory=list)
     instability: float = 0.0
 
 
