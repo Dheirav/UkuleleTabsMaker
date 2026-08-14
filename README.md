@@ -60,17 +60,46 @@ docker run -p 8000:8000 ukulele-tabs
 ```
 
 ## CLI Usage
+Run it with no arguments to get the interactive app: paste a URL or a video
+path at the prompt and watch each stage report what it is doing.
+```bash
+python main.py
+```
+```
+  Ukulele Tabs  ·  YouTube tab video → tab sheet
+  Paste a YouTube URL or a video file path. Enter on its own quits.
+
+  > https://www.youtube.com/watch?v=VIDEO_ID
+
+  ██████████████████████████░░░░░░░░░░░░░░  42%  0:11
+
+  ✓ download video     8.4 MB of 8.4 MB · 6.1 MB/s
+  ✓ inspect video      probe 70 of 70
+  ▸ scan frames        frame 1171 of 1570
+    build pages
+    read notation
+    work out timing
+    write files
+```
+Each source gets its own directory under `--output`, and a video already
+downloaded there is reused instead of fetched again. The prompt accepts Windows
+and `\\wsl.localhost\...` paths as pasted — the shell would eat the backslashes,
+the prompt does not.
+
+Scripted use takes the target on the command line, which prints log lines and a
+JSON summary instead of the live display:
 ```bash
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID" --output ./outputs
+python main.py --video-path ./clip.mp4 --output ./outputs
 ```
-Outputs are written to `./outputs`:
+Outputs are written to the run directory:
 - `tabs.txt`
 - `tabs.pdf`
 - `tabs.json`
 
-Save sampled frames for debugging:
+Save sampled frames for debugging (scrolling mode only):
 ```bash
-python main.py "https://www.youtube.com/watch?v=sKTiSPn5KBU&list=RDsKTiSPn5KBU&start_radio=1" --output ./outputs --save-frames
+python main.py "https://www.youtube.com/watch?v=VIDEO_ID" --output ./outputs --save-frames
 ```
 
 ## Web UI

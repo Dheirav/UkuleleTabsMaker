@@ -6,12 +6,15 @@ streams a video once to find page boundaries and highlight timing, then makes a
 clean composite of each page for recognition.
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from src.app.config import Config
+
+
+CONTENT_ROW_PROBES = 40
 
 
 @dataclass
@@ -95,14 +98,17 @@ def signature_distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(max(0.0, 1.0 - float(np.dot(a, b))))
 
 
-def find_content_rows(video_path: str, config: Config, probes: int = 40) -> Tuple[int, int]:
+def find_content_rows(video_path: str, config: Config, probes: int = CONTENT_ROW_PROBES,
+                      on_step: Optional[Callable[[int], None]] = None) -> Tuple[int, int]:
     """Rows carrying actual content, so letterboxing is dropped once per video."""
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
     acc, seen = None, 0
-    for i in np.linspace(0, max(total - 1, 0), probes).astype(int):
+    for step, i in enumerate(np.linspace(0, max(total - 1, 0), probes).astype(int)):
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
         ret, frame = cap.read()
+        if on_step:
+            on_step(step + 1)
         if not ret:
             continue
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -118,20 +124,26 @@ def find_content_rows(video_path: str, config: Config, probes: int = 40) -> Tupl
     return int(rows.min()), int(rows.max()) + 1
 
 
-def measure_scroll(video_path: str, config: Config) -> float:
+def measure_scroll(video_path: str, config: Config,
+                   on_step: Optional[Callable[[int, int], None]] = None) -> float:
     """Median |horizontal drift| in px/s.
 
     Probes consecutive pairs spread across the whole video rather than a single
     run at the start: the opening seconds are often a title card or an intro
     animation, which says nothing about how the tab behaves later.
     """
-    y0, y1 = find_content_rows(video_path, config)
+    probes = max(config.paged_motion_probes, 2)
+    steps = CONTENT_ROW_PROBES + probes
+    y0, y1 = find_content_rows(
+        video_path, config, CONTENT_ROW_PROBES,
+        (lambda i: on_step(i, steps)) if on_step else None)
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
-    probes = max(config.paged_motion_probes, 2)
     drifts = []
-    for start in np.linspace(0, max(total - 3, 0), probes).astype(int):
+    for probe, start in enumerate(np.linspace(0, max(total - 3, 0), probes).astype(int)):
+        if on_step:
+            on_step(CONTENT_ROW_PROBES + probe + 1, steps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(start))
         prev = None
         for _ in range(config.paged_motion_pair_frames):
@@ -156,15 +168,17 @@ def measure_scroll(video_path: str, config: Config) -> float:
     return float(np.median(drifts)) if drifts else 0.0
 
 
-def is_paged(video_path: str, config: Config) -> bool:
+def is_paged(video_path: str, config: Config,
+             on_step: Optional[Callable[[int, int], None]] = None) -> bool:
     if config.paged_mode == "paged":
         return True
     if config.paged_mode == "scrolling":
         return False
-    return measure_scroll(video_path, config) <= config.paged_max_scroll_px_s
+    return measure_scroll(video_path, config, on_step) <= config.paged_max_scroll_px_s
 
 
-def scan(video_path: str, config: Config) -> Dict:
+def scan(video_path: str, config: Config,
+         on_frame: Optional[Callable[[int, int], None]] = None) -> Dict:
     """Single streaming pass: page signatures, highlight spans, playhead x."""
     y0, y1 = find_content_rows(video_path, config)
     cap = cv2.VideoCapture(video_path)
@@ -172,6 +186,7 @@ def scan(video_path: str, config: Config) -> Dict:
         cap.release()
         raise FileNotFoundError(f"Could not open video: {video_path}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    expected = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
 
     sig_prev = None
     sig_ref = None
@@ -227,6 +242,8 @@ def scan(video_path: str, config: Config) -> Dict:
         heads.append(int(np.argmax(ph) / scale)
                      if ph.max() > strip.shape[0] * 0.3 else -1)
         idx += 1
+        if on_frame:
+            on_frame(idx, max(expected, idx))
     cap.release()
     return {"fps": fps, "y0": y0, "y1": y1, "n": idx, "scan_scale": scale,
             "diffs": diffs, "spans": spans, "heads": heads,
@@ -290,7 +307,8 @@ def segment_pages(scan_data: Dict, config: Config) -> List[Page]:
 
 
 def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
-                    config: Config) -> None:
+                    config: Config,
+                    on_frame: Optional[Callable[[int, int], None]] = None) -> None:
     """Median over each page's frames removes the moving playhead and highlight."""
     y0, y1 = scan_data["y0"], scan_data["y1"]
 
@@ -306,6 +324,7 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
             wanted.setdefault(int(i), []).append(page)
 
     cap = cv2.VideoCapture(video_path)
+    last_wanted = max(wanted) if wanted else 0
     # Pages are contiguous and ordered, so a page can be finished and freed as
     # soon as the read position passes it: only one page's frames are ever held.
     buffers: Dict[int, List[np.ndarray]] = {}
@@ -323,6 +342,10 @@ def composite_pages(video_path: str, pages: List[Page], scan_data: Dict,
             finished = pending.pop(0)
             done.append((finished, buffers.pop(finished.index, [])))
         idx += 1
+        if on_frame:
+            on_frame(min(idx, last_wanted), last_wanted)
+        if idx > last_wanted:
+            break  # every sampled frame is in hand; the tail has nothing to give
     cap.release()
     for page in pending:
         done.append((page, buffers.pop(page.index, [])))

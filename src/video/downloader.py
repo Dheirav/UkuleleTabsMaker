@@ -1,5 +1,6 @@
 import os
 from glob import glob
+from typing import Callable, Optional
 
 import yt_dlp
 
@@ -37,17 +38,47 @@ def _resolve_downloaded_video(output_dir: str) -> str:
     raise FileNotFoundError("yt-dlp finished without producing a usable video file")
 
 
-def download_youtube(url: str, output_dir: str) -> str:
+def _progress_hook(callback: Callable[[float, str], None]):
+    def hook(status: dict) -> None:
+        if status.get("status") != "downloading":
+            return
+        total = status.get("total_bytes") or status.get("total_bytes_estimate") or 0
+        got = status.get("downloaded_bytes") or 0
+        fraction = (got / total) if total else 0.0
+        detail = f"{got / 1e6:.1f} MB"
+        if total:
+            detail += f" of {total / 1e6:.1f} MB"
+        speed = status.get("speed")
+        if speed:
+            detail += f" · {speed / 1e6:.1f} MB/s"
+        callback(min(fraction, 1.0), detail)
+
+    return hook
+
+
+def download_youtube(url: str, output_dir: str,
+                     progress_cb: Optional[Callable[[float, str], None]] = None) -> str:
     os.makedirs(output_dir, exist_ok=True)
     outtmpl = os.path.join(output_dir, "video.%(ext)s")
     cookies_path = os.environ.get("YTDLP_COOKIES")
 
-    formats = ["bestvideo*+bestaudio/best", "bestvideo+bestaudio/best", "best"]
+    # H.264 first: YouTube serves AV1 for many of these uploads and OpenCV's
+    # bundled FFmpeg cannot decode it, so the fastest download is useless. Fall
+    # back to unconstrained formats rather than failing outright.
+    formats = [
+        "bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]",
+        "bestvideo*+bestaudio/best",
+        "bestvideo+bestaudio/best",
+        "best",
+    ]
     last_error = None
     info = None
     for fmt in formats:
+        opts = _build_opts(outtmpl, fmt, cookies_path)
+        if progress_cb:
+            opts["progress_hooks"] = [_progress_hook(progress_cb)]
         try:
-            with yt_dlp.YoutubeDL(_build_opts(outtmpl, fmt, cookies_path)) as ydl:
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
             break
         except Exception as exc:

@@ -55,9 +55,10 @@ def _cleanup_jobs() -> None:
             shutil.rmtree(os.path.join(OUTPUTS_DIR, jid), ignore_errors=True)
 
 
-def _progress(job_id: str, stage: str, value: float) -> None:
+def _progress(job_id: str, stage: str, value: float, detail: str = "") -> None:
     JOBS[job_id]["stage"] = stage
     JOBS[job_id]["progress"] = value
+    JOBS[job_id]["detail"] = detail
 
 
 def _read_report(output_dir: str) -> dict:
@@ -73,7 +74,7 @@ def _read_report(output_dir: str) -> dict:
 def _worker(job_id: str, url: str, output_dir: str) -> None:
     config = Config(output_dir=output_dir)
     try:
-        sheet = run_pipeline(url, config, lambda s, v: _progress(job_id, s, v))
+        sheet = run_pipeline(url, config, lambda s, v, d="": _progress(job_id, s, v, d))
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["sheet"] = sheet
         JOBS[job_id]["text"] = render_text_tab(sheet, config)
@@ -113,7 +114,8 @@ def status(job_id: str):
     job = JOBS.get(job_id)
     if not job:
         return jsonify({"status": "missing"}), 404
-    return jsonify({"status": job.get("status"), "progress": job.get("progress"), "stage": job.get("stage")})
+    return jsonify({"status": job.get("status"), "progress": job.get("progress"),
+                    "stage": job.get("stage"), "detail": job.get("detail", "")})
 
 
 @app.route("/result/<job_id>")

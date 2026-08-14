@@ -99,9 +99,9 @@
 
   {% if job.status not in ["done", "error"] %}
   const STAGES = {
-    init: "Starting", download: "Downloading video", scanning: "Scanning frames",
-    pages: "Finding pages", recognise: "Reading notation",
-    reconstruct: "Working out timing", output: "Writing files", done: "Done"
+    init: "Starting", download: "Downloading video", probe: "Inspecting video",
+    scan: "Scanning frames", pages: "Building pages", read: "Reading notation",
+    timing: "Working out timing", write: "Writing files", done: "Done"
   };
   async function poll() {
     try {
@@ -111,7 +111,8 @@
       if (data.status === "done" || data.status === "error") { window.location.reload(); return; }
       const pct = Math.round((data.progress || 0) * 100);
       document.getElementById("status-text").textContent =
-        `${STAGES[data.stage] || data.stage} — ${pct}%`;
+        `${STAGES[data.stage] || data.stage} — ${pct}%` +
+        (data.detail ? ` · ${data.detail}` : "");
       document.getElementById("bar").style.width = `${pct}%`;
     } catch (err) { /* keep polling */ }
     setTimeout(poll, 1200);

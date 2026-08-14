@@ -7,6 +7,7 @@ from functools import partial
 from typing import Callable, Dict, List, Optional
 
 from src.app.config import Config
+from src.app.progress import STAGES, Progress, ProgressFn
 from src.models.schema import FrameSample, TabSheet
 from src.utils.logging import setup_logging
 from src.video.downloader import download_youtube
@@ -28,8 +29,9 @@ from src.output.pdf import write_pdf
 logger = logging.getLogger(__name__)
 
 
-def download_video(url: str, config: Config) -> str:
-    return download_youtube(url, config.output_dir)
+def download_video(url: str, config: Config,
+                   progress_cb: Optional[Callable[[float, str], None]] = None) -> str:
+    return download_youtube(url, config.output_dir, progress_cb)
 
 
 def sample_video(video_path: str, config: Config) -> List[FrameSample]:
@@ -136,32 +138,37 @@ def run_paged_pipeline(
     video_path: str,
     config: Config,
     source: str,
-    progress_cb: Optional[Callable[[str, float], None]] = None,
+    progress: Progress,
 ) -> tuple:
     """Static paged tab: read each page once, take timing from the player's own
     highlight and playhead rather than estimating scroll speed."""
-    if progress_cb:
-        progress_cb("scanning", 0.2)
-    scan_data = paged.scan(video_path, config)
+    progress.stage("scan")
+    scan_data = paged.scan(
+        video_path, config,
+        lambda i, total: progress.tick(i / max(total, 1), f"frame {i} of {total}"))
 
     pages = paged.segment_pages(scan_data, config)
-    logger.info("paged mode: %d pages over %.1fs", len(pages), scan_data["n"] / scan_data["fps"])
-    if progress_cb:
-        progress_cb("pages", 0.4)
-    paged.composite_pages(video_path, pages, scan_data, config)
+    duration = scan_data["n"] / scan_data["fps"]
+    logger.info("paged mode: %d pages over %.1fs", len(pages), duration)
+    progress.stage("pages", f"{len(pages)} pages over {duration:.0f}s")
+    paged.composite_pages(
+        video_path, pages, scan_data, config,
+        lambda i, total: progress.tick(i / max(total, 1),
+                                       f"{len(pages)} pages · frame {i} of {total}"))
     paged.attach_measures(pages, scan_data, config)
 
-    if progress_cb:
-        progress_cb("recognise", 0.6)
+    progress.stage("read")
     classifier = GlyphClassifier(collect_sample_glyphs(pages, config))
-    logger.info("glyph font: %s (fit %.3f)",
-                os.path.basename(classifier.font_path or "none"), classifier.fit)
-    for page in pages:
+    font_name = os.path.basename(classifier.font_path or "none")
+    logger.info("glyph font: %s (fit %.3f)", font_name, classifier.fit)
+    read_progress = progress.counter(len(pages))
+    for done, page in enumerate(pages, start=1):
         if page.composite is not None:
             page.digits = read_page(page.composite, classifier, config)
+        read_progress(done)
+    progress.note(f"font {font_name} · {sum(len(p.digits) for p in pages)} glyphs")
 
-    if progress_cb:
-        progress_cb("reconstruct", 0.8)
+    progress.stage("timing")
     reconstruction = notes_from_pages(pages, scan_data, config)
     measures = parse_measures(reconstruction.notes, reconstruction.bar_times)
     sheet = TabSheet(
@@ -178,6 +185,7 @@ def run_paged_pipeline(
     logger.info("coverage: %d/%d highlighted measures produced notes (%.1f%%)",
                 int(coverage["measures_with_notes"]), int(coverage["measures_highlighted"]),
                 100.0 * coverage["coverage"])
+    progress.note(f"{len(reconstruction.notes)} notes in {len(measures)} measures")
     stats = {
         "mode": "paged",
         "pages": float(len(pages)),
@@ -194,55 +202,66 @@ def run_paged_pipeline(
 def run_pipeline(
     url: str,
     config: Config,
-    progress_cb: Optional[Callable[[str, float], None]] = None,
+    progress_cb: Optional[ProgressFn] = None,
     video_path: Optional[str] = None,
 ) -> TabSheet:
+    stages = [key for key, _ in STAGES]
+    if video_path:
+        stages.remove("download")
+    progress = Progress(progress_cb, stages)
+
     if not video_path:
-        if progress_cb:
-            progress_cb("download", 0.05)
-        video_path = download_video(url, config)
+        progress.stage("download", "contacting YouTube")
+        video_path = download_video(url, config, progress.tick)
 
     source = url if url else (video_path or "local")
-    if paged.is_paged(video_path, config):
-        sheet, stats = run_paged_pipeline(video_path, config, source, progress_cb)
-        if progress_cb:
-            progress_cb("output", 0.9)
+    progress.stage("probe", "checking whether the tab scrolls")
+    paged_video = paged.is_paged(
+        video_path, config,
+        lambda i, total: progress.tick(i / max(total, 1), f"probe {i} of {total}"))
+
+    if paged_video:
+        sheet, stats = run_paged_pipeline(video_path, config, source, progress)
+        progress.stage("write", "txt · pdf · json")
         write_outputs(sheet, config, stats)
-        if progress_cb:
-            progress_cb("done", 1.0)
+        progress.done()
         return sheet
 
-    if progress_cb:
-        progress_cb("sampling", 0.15)
+    progress.stage("scan", "scrolling tab")
     frames, sampling_stats = sample_frames(video_path, config, return_stats=True)
 
-    if progress_cb:
-        progress_cb("vision", 0.35)
+    progress.stage("pages", f"{len(frames)} frames")
     tab_frames = extract_tab_frames(frames, config)
 
-    if progress_cb:
-        progress_cb("reconstruct", 0.6)
+    progress.stage("timing")
     sheet = reconstruct_sheet(tab_frames, config, source)
 
-    if progress_cb:
-        progress_cb("output", 0.85)
+    progress.stage("write", "txt · pdf · json")
     write_outputs(sheet, config, sampling_stats)
 
-    if progress_cb:
-        progress_cb("done", 1.0)
+    progress.done()
     return sheet
 
 
 def run_cli() -> None:
-    setup_logging()
     parser = argparse.ArgumentParser(description="Ukulele tab extractor")
     parser.add_argument("url", nargs="?", default="", help="YouTube URL")
     parser.add_argument("--output", default="./outputs", help="Output directory")
     parser.add_argument("--video-path", default="", help="Use an existing video file")
     parser.add_argument("--save-frames", action="store_true", help="Save sampled frames for debugging")
     parser.add_argument("--workers", type=int, default=0, help="Number of vision worker processes (0 = auto)")
+    parser.add_argument("--plain", action="store_true",
+                        help="Log lines and JSON instead of the interactive display")
     args = parser.parse_args()
 
+    # No target and a terminal to draw on: run as an app rather than demanding
+    # the target be spelled correctly on the command line first time.
+    if not args.url and not args.video_path and not args.plain:
+        from src.app.tui import run_app
+        run_app(args.output, args.workers)
+        return
+
+    setup_logging()
     config = Config(output_dir=args.output, num_workers=args.workers)
     if args.save_frames:
         config.save_sampled_frames = True
