@@ -423,3 +423,43 @@ def test_pages_are_composited_as_each_finishes_not_all_at_the_end(tmp_path, monk
     assert finished[0][0] == 0
     assert finished[0][1] < last_frame / 2
     assert [index for index, _ in finished] == list(range(count))
+
+
+def test_bar_lines_come_from_the_cursor_snapping_back():
+    """This player holds the sounding measure in one place on screen, so the
+    highlight occupies the same columns in every bar and cannot mark a new one.
+    Where the music repeats a bar the display barely changes either, and the two
+    bars were being run together. The cursor's snap back to the left is
+    unambiguous however alike the bars look."""
+    from src.vision.paged import playhead_bar_starts
+
+    config = Config()
+    sweep = list(range(200, 900, 20))          # cursor crossing one bar
+    heads = sweep * 3                          # three identical bars in a row
+    starts = playhead_bar_starts({"heads": heads, "fps": 10.0}, config)
+    assert len(starts) == 2                    # two snaps back, after bars 1 and 2
+    assert starts[0] == pytest.approx(len(sweep) / 10.0)
+
+
+def test_a_cursor_that_never_snaps_back_marks_no_bars():
+    from src.vision.paged import playhead_bar_starts
+
+    heads = list(range(100, 900, 10))          # one continuous sweep
+    assert playhead_bar_starts({"heads": heads, "fps": 10.0}, Config()) == []
+
+
+def test_cursor_jitter_is_not_read_as_a_bar_line():
+    """The threshold is a fraction of the cursor's own travel, so it does not
+    depend on the video's resolution or on how wide a bar is drawn."""
+    from src.vision.paged import playhead_bar_starts
+
+    heads = []
+    for x in range(200, 900, 20):
+        heads.extend([x, x - 8, x])            # a few pixels of wobble
+    assert playhead_bar_starts({"heads": heads, "fps": 10.0}, Config()) == []
+
+
+def test_bar_lines_survive_a_video_with_no_cursor():
+    from src.vision.paged import playhead_bar_starts
+
+    assert playhead_bar_starts({"heads": [-1] * 50, "fps": 10.0}, Config()) == []

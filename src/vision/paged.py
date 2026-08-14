@@ -508,6 +508,39 @@ def track_measures(scan_data: Dict, config: Config) -> List[MeasureSpan]:
             and (m.x1 - m.x0) >= config.measure_min_width_px]
 
 
+def playhead_bar_starts(scan_data: Dict, config: Config) -> List[float]:
+    """Times the cursor jumped back to the left, which is a bar beginning.
+
+    The highlight cannot mark bar lines on its own here. This player keeps the
+    sounding measure in a fixed place on screen and moves the notation underneath
+    it, so the highlight occupies the same columns in every bar and never changes
+    to signal a new one. Splitting on notation change instead fails whenever the
+    music repeats a bar: the display then barely differs, which is exactly when
+    two bars were run together into one.
+
+    The cursor has no such trouble. It sweeps the measure once and snaps back,
+    and that snap is unambiguous however similar the two bars look.
+    """
+    heads, fps = scan_data["heads"], scan_data["fps"]
+    seen = [x for x in heads if x >= 0]
+    if len(seen) < 2:
+        return []
+    # A fraction of the cursor's own travel, so this does not depend on the
+    # video's resolution or on how wide a bar is drawn.
+    threshold = (max(seen) - min(seen)) * config.playhead_reset_ratio
+    if threshold <= 0:
+        return []
+    starts: List[float] = []
+    previous = None
+    for i, x in enumerate(heads):
+        if x < 0:
+            continue
+        if previous is not None and previous - x >= threshold:
+            starts.append(i / fps)
+        previous = x
+    return starts
+
+
 def attach_measures(pages: List[Page], scan_data: Dict, config: Config) -> None:
     """Collapse per-frame highlight boxes into stable measure spans per page."""
     spans, fps = scan_data["spans"], scan_data["fps"]

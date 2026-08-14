@@ -91,6 +91,9 @@ class Config:
     measure_content_threshold: float = 0.08
     measure_min_width_px: int = 60
     use_playhead: bool = True
+    # How far the cursor must jump backwards, as a fraction of its own travel,
+    # to count as the start of a new bar rather than detection noise.
+    playhead_reset_ratio: float = 0.25
     # Distinct cursor positions a page needs before its notes are timed from the
     # cursor rather than from where they sit in the bar. Counts positions, not
     # frames: forty frames of a resting cursor are one position's worth of

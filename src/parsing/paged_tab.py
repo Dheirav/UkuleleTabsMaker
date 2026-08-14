@@ -10,6 +10,7 @@ import numpy as np
 
 from src.app.config import Config
 from src.models.schema import Note, ReconstructionResult
+from src.vision.paged import playhead_bar_starts
 
 
 def _playhead_times(scan_data: Dict, page, config: Config) -> Optional[List]:
@@ -106,8 +107,16 @@ def notes_from_pages(pages, scan_data: Dict, config: Config) -> ReconstructionRe
                 ))
 
     notes.sort(key=lambda n: (n.time, n.string_index))
-    # A page turn can split one measure's highlight in two, which would otherwise
-    # emit a spurious bar line a few frames after the real one.
+    # The highlight alone misses a bar line whenever two bars in a row carry the
+    # same music, because this player holds the sounding measure in one place on
+    # screen and the display barely changes. The cursor snapping back to the left
+    # marks those, and the two sources together cover what either misses on its
+    # own — the cursor cannot mark the first bar, having nothing to snap back
+    # from. Clustering drops the duplicates where both saw the same bar.
+    if config.use_playhead:
+        bar_times.extend(playhead_bar_starts(scan_data, config))
+    # A page turn can also split one measure's highlight in two, which would
+    # otherwise emit a spurious bar line a few frames after the real one.
     bar_times = _cluster(sorted(set(bar_times)), config.bar_time_cluster_tolerance_s)
     return ReconstructionResult(notes=notes, bar_times=bar_times, speed_px_per_s=None)
 
