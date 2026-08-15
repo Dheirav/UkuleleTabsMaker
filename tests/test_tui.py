@@ -135,16 +135,27 @@ def test_download_hook_survives_an_unknown_total():
     assert seen[0][0] == 0.0
 
 
-def test_the_format_ladder_exhausts_h264_before_anything_else():
-    """A codec this build cannot decode is worse than a smaller picture: OpenCV
-    reads AV1 as zero frames, which yielded a confidently empty tab sheet."""
-    from src.video.downloader import DECODABLE_RUNGS, FORMAT_LADDER
+def test_the_format_ladder_does_not_constrain_the_codec_first():
+    """The H.264-first ordering existed to dodge AV1, which OpenCV read as zero
+    frames. That build is gone, so the codec no longer decides the rung."""
+    from src.video.downloader import FORMAT_LADDER
 
     labels = [label for label, _ in FORMAT_LADDER]
     selectors = [sel for _, sel in FORMAT_LADDER]
-    assert all("avc1" in s for s in selectors[:DECODABLE_RUNGS])
-    assert not any("avc1" in s for s in selectors[DECODABLE_RUNGS:])
-    assert labels[0].startswith("H.264")
+    assert "avc1" not in selectors[0], "the first rung must not constrain the codec"
+    assert not labels[0].startswith("H.264")
+    # One H.264 rung stays below, as a fallback for anything this build trips on.
+    assert any("avc1" in s for s in selectors)
+
+
+def test_formats_are_ranked_by_picture_not_by_codec():
+    """yt-dlp's default ordering ranks av01 over avc1 on codec identity, which
+    picked a 46kbps AV1 stream over the 102kbps H.264 beside it at the same
+    resolution. Bitrate is what a smeared fret digit cares about."""
+    from src.video.downloader import FORMAT_SORT, _build_opts
+
+    assert FORMAT_SORT == ["res", "br"]
+    assert _build_opts("out", "best", None)["format_sort"] == ["res", "br"]
 
 
 def test_a_refused_format_is_retried_before_being_abandoned():

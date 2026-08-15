@@ -10,18 +10,27 @@ import yt_dlp
 
 logger = logging.getLogger(__name__)
 
-# Tried in order. Every H.264 rung is exhausted before anything unconstrained,
-# because a codec this build cannot decode is worse than a smaller picture:
-# OpenCV reads AV1 as zero frames, which used to yield a confidently empty sheet.
+# Tried in order. The top rungs no longer constrain the codec: they used to, to
+# dodge AV1, which this build read as zero frames, and since opencv-python
+# 4.14.0.94 decodes AV1, VP9 and HEVC alike there is nothing left to dodge.
+#
+# Codec-neutral is not the same as codec-preferring, and the difference matters.
+# yt-dlp's default ordering ranks av01 above avc1 on codec identity rather than
+# on picture, which on a measured sample picked a 46kbps AV1 stream over the
+# 102kbps H.264 beside it at the same resolution. Thin string lines and small
+# fret digits are exactly what a low bitrate smears, so FORMAT_SORT below ranks
+# by resolution then bitrate and lets whichever codec carries the best picture
+# win. One H.264 rung stays as a fallback, and the sampler now raises outright
+# rather than returning an empty sheet if a file will not decode.
 FORMAT_LADDER: List[Tuple[str, str]] = [
+    ("best up to 1080p", "bestvideo[height<=1080]+bestaudio/best[height<=1080]"),
+    ("best any size", "bestvideo*+bestaudio/best"),
     ("H.264 up to 1080p",
      "bestvideo[vcodec^=avc1][height<=1080]+bestaudio/best[vcodec^=avc1][height<=1080]"),
-    ("H.264 any size", "bestvideo[vcodec^=avc1]+bestaudio/best[vcodec^=avc1]"),
-    ("H.264 pre-muxed", "best[vcodec^=avc1]"),
-    ("any codec", "bestvideo*+bestaudio/best"),
     ("whatever is offered", "best"),
 ]
-DECODABLE_RUNGS = 3          # how many of the above are known-decodable
+# Highest resolution, then highest bitrate, whatever the codec happens to be.
+FORMAT_SORT = ["res", "br"]
 ATTEMPTS_PER_FORMAT = 3
 RETRY_PAUSE_S = 4.0
 
@@ -45,6 +54,7 @@ def _build_opts(outtmpl: str, fmt: str, cookies_path: str | None) -> dict:
     opts = {
         "outtmpl": outtmpl,
         "format": fmt,
+        "format_sort": FORMAT_SORT,
         "merge_output_format": "mp4",
         "quiet": True,
         # yt-dlp still paints a progress bar under quiet, which tears through a
@@ -124,9 +134,6 @@ def download_youtube(url: str, output_dir: str,
                 # read got accepted while the preference looked to be in force.
                 logger.warning("could not get %s (%s); fell back to %s",
                                FORMAT_LADDER[0][0], str(last_error)[:120], label)
-            if rung >= DECODABLE_RUNGS:
-                logger.warning("%s may not be decodable here — if the read finds "
-                               "no frames, this is why", label)
             break
 
     if info is None:
