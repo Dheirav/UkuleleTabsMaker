@@ -27,6 +27,7 @@ if ROOT not in sys.path:
 
 from src.app.config import Config
 from src.app.main import run_paged_pipeline
+from src.app.progress import STAGES, Progress
 from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
 from src.vision.page_digits import collect_sample_glyphs, read_page
@@ -185,7 +186,10 @@ def cmd_score(clips, config):
             unverified.append(clip["id"])
         truth_pages = truth_doc["pages"]
 
-        sheet, stats = run_paged_pipeline(clip["path"], config, clip["id"])
+        # Silent progress: the harness prints its own scores, and a second
+        # progress display would tear through them.
+        sheet, stats = run_paged_pipeline(clip["path"], config, clip["id"],
+                                          Progress(None, STAGES))
         _, pages, _ = analyse(clip, config)
         hyp_pages = detected_sequences(pages)
 
