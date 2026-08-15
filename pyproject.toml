@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "Extract ukulele tab sheets from scrolling tab tutorial videos"
 readme = "README.md"
 requires-python = ">=3.9"
+# opencv-python is deliberately absent: the release that decodes AV1 declares
+# numpy>=2, which cannot resolve against the numpy torch pins here. Install it
+# separately with `pip install --no-deps -r requirements-opencv.txt`.
 dependencies = [
     "yt-dlp==2026.07.04",
-    "opencv-python==4.10.0.84",
     "numpy==1.26.4",
     "pytesseract==0.3.10",
     "flask==3.0.3",
