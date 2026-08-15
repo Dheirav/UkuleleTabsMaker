@@ -6,9 +6,10 @@ It reads the notation off the screen — this is computer vision, not audio
 transcription — and recovers each note's fret, string and time from what the
 player itself shows.
 
-Measured against hand-checked ground truth on five clips (379 notes): **98.9%
-recall, 100% precision**, with onsets a median of 17ms from the video's own
-cursor. Across a library of 23 songs and 2,145 bars, 8 bars were lost.
+Measured against hand-checked ground truth on three clips (340 notes): **99.7%
+recall, 100% precision** — 339 notes recovered exactly, one missed, none
+invented. Both the ground truth and the detections it is scored against are in
+`benchmark/`, so the figure can be checked without re-running the pipeline.
 
 ## Features
 - YouTube ingestion via yt-dlp, preferring H.264 because OpenCV cannot decode
