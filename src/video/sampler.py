@@ -113,8 +113,15 @@ def sample_frames(
         prev_gray = gray
         frame_id += 1
 
+    reported_total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     duration_s = float(total_read) / float(fps) if fps else 0.0
     cap.release()
+    if total_read == 0 and reported_total > 0:
+        raise RuntimeError(
+            f"Decoded 0 of ~{int(reported_total)} frames from {video_path}. "
+            "The container opened but no frame could be decoded, which usually "
+            "means the codec is unsupported by this OpenCV build."
+        )
     relaxed_threshold = None
     if considered > 0 and config.dedup_hamming_threshold > 0:
         keep_ratio = len(frames) / float(considered)

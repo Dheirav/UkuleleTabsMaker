@@ -1,0 +1,27 @@
+# Installed with --no-deps, after requirements.txt:
+#
+#   pip install -r requirements.txt
+#   pip install --no-deps -r requirements-opencv.txt
+#
+# Why the separate file:
+#
+# 4.14.0.94 is the first release carrying the dav1d fix (opencv-python PR #1209,
+# release 94, 2026-07-29). Everything before it opens an AV1 file, reports a
+# frame count, then decodes nothing. That includes 5.0.0.93 -- release 93 was cut
+# 2026-07-02, three weeks before the fix landed, so a plain `pip install -U
+# opencv-python` picks the highest version number and lands back on broken AV1.
+# Pin the exact version; do not float it.
+#
+# The wheel declares numpy>=2, so pip resolves requirements.txt and this pin
+# together as ResolutionImpossible (numpy is held at 1.26.4 by torch 2.3.1).
+# A constraints file does not help -- constraints cap versions, they do not
+# waive a declared requirement. Hence --no-deps.
+#
+# The declared bound is stricter than the binary: the wheel is built against the
+# numpy 2 headers but keeps the backward-compatible ABI. Verified on numpy
+# 1.26.4 + torch 2.3.1+cu121 -- AV1 decodes in full, h264 sampling is unchanged,
+# and the suite passes.
+#
+# This combination is not one upstream formally supports. If it ever breaks,
+# the exit is numpy>=2 with torch>=2.4.1, which lets opencv resolve normally.
+opencv-python==4.14.0.94

@@ -15,8 +15,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY requirements.txt requirements-opencv.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt \
+    && pip install --no-cache-dir --no-deps -r /app/requirements-opencv.txt
 
 COPY . /app
 

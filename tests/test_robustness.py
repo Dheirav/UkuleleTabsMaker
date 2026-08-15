@@ -1,3 +1,5 @@
+import os
+
 import cv2
 import numpy as np
 import pytest
@@ -107,3 +109,70 @@ def test_sample_frames_raises_on_missing_video():
     config = Config()
     with pytest.raises(FileNotFoundError):
         sample_frames("/nonexistent/video.mp4", config)
+
+
+class _UndecodableCapture:
+    """A container that opens and reports frames but decodes none.
+
+    This is how an unsupported codec fails: read() never succeeds, but nothing
+    raises, so the sampler would otherwise return an empty list that looks
+    exactly like a blank video.
+    """
+
+    def __init__(self, path):
+        self.path = path
+
+    def isOpened(self):
+        return True
+
+    def get(self, prop):
+        if prop == cv2.CAP_PROP_FPS:
+            return 30.0
+        if prop == cv2.CAP_PROP_FRAME_COUNT:
+            return 89.0
+        return 0.0
+
+    def read(self):
+        return False, None
+
+    def release(self):
+        pass
+
+
+def test_sample_frames_raises_when_no_frame_decodes(monkeypatch):
+    monkeypatch.setattr(cv2, "VideoCapture", _UndecodableCapture)
+    config = Config()
+    with pytest.raises(RuntimeError, match="Decoded 0 of ~89 frames"):
+        sample_frames("/some/av1_clip.mp4", config)
+
+
+AV1_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "av1_sample.mp4")
+
+
+def test_opencv_build_decodes_av1():
+    """Guards the opencv-python pin in requirements-opencv.txt.
+
+    Every release before 4.14.0.94 opens this file and reports 10 frames, then
+    decodes none -- including 5.0.0.93, which has a higher version number but
+    was cut before the dav1d fix landed. If this fails, OpenCV was upgraded or
+    floated onto a build without the fix, and AV1 sources decode to nothing.
+    """
+    cap = cv2.VideoCapture(AV1_FIXTURE)
+    assert cap.isOpened(), f"could not open {AV1_FIXTURE}"
+    decoded = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        assert frame is not None and frame.size > 0
+        decoded += 1
+    cap.release()
+    assert decoded == 10, (
+        f"decoded {decoded}/10 AV1 frames with OpenCV {cv2.__version__}; "
+        "this build lacks the dav1d fix (needs opencv-python>=4.14.0.94)"
+    )
+
+
+def test_sample_frames_reads_an_av1_source():
+    config = Config()
+    sample_frames(AV1_FIXTURE, config)

@@ -1,5 +1,6 @@
 yt-dlp==2026.07.04
-opencv-python==4.10.0.84
+# opencv-python is installed separately from requirements-opencv.txt.
+# See that file for why it cannot be resolved alongside numpy==1.26.4.
 numpy==1.26.4
 pytesseract==0.3.10
 flask==3.0.3

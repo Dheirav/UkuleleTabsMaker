@@ -64,7 +64,11 @@ overlap between consecutive pages: each measure is highlighted exactly once.
    python -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
+   pip install --no-deps -r requirements-opencv.txt
    ```
+   Both commands are required. OpenCV is pinned separately because the release
+   that decodes AV1 declares a numpy bound that conflicts with the one torch
+   needs; `requirements-opencv.txt` explains the details.
 
 ### Docker
 ```bash
