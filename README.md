@@ -12,8 +12,10 @@ invented. Both the ground truth and the detections it is scored against are in
 `benchmark/`, so the figure can be checked without re-running the pipeline.
 
 ## Features
-- YouTube ingestion via yt-dlp, preferring H.264 because OpenCV cannot decode
-  AV1 on many platforms and reads it as an empty video
+- YouTube ingestion via yt-dlp, ranking formats by resolution then bitrate
+  rather than by codec — yt-dlp's own default prefers AV1 on codec identity and
+  will take a 46kbps AV1 stream over the 102kbps H.264 beside it, and a low
+  bitrate is exactly what smears thin string lines and small fret digits
 - Automatic detection of paged vs scrolling tab videos
 - **Paged mode** (tab-player screencasts): page segmentation, per-page
   compositing, and timing taken from the player's own measure highlight and
@@ -238,8 +240,9 @@ division searched rather than assumed. Bar lines come from the highlight, not th
 cursor, so that figure witnesses errors the cursor and reader would otherwise
 share — but it is a weak instrument, and the onset error is the number to trust.
 
-Videos are H.264-only: OpenCV cannot reliably decode AV1 on many platforms, and a
-benchmark that silently fails to decode is worse than one that refuses to.
+Videos are H.264-only. AV1 decodes since the pinned opencv-python 4.14.0.94, so
+this is no longer forced, but a benchmark that does not depend on the decoder is
+one less thing that can move underneath a measurement.
 
 `benchmark/videos/`, `pages/`, and `results/` are gitignored; `clips.json` and
 `truth/` are the versioned parts.
