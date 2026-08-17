@@ -3,6 +3,7 @@
   python scripts/measure_truth.py dump  [id ...]   # one crop per highlighted measure
   python scripts/measure_truth.py stub  [--blank] [--sample N] [id ...]  # seed truth
   python scripts/measure_truth.py score [id ...]   # score against benchmark/measures/
+  python scripts/measure_truth.py sheet [id ...]   # score the notes that reach the sheet
 
 Truth is keyed to the measures the player highlighted, not to page indices. The
 highlight is drawn by the player, so that sequence does not move when page
@@ -28,6 +29,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src.app.config import Config
+from src.app.main import run_paged_pipeline
+from src.app.progress import STAGES, Progress
 from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
 from src.vision.page_digits import collect_sample_glyphs, find_string_lines, read_page
@@ -330,8 +333,108 @@ def cmd_score(clips, config):
         print(f"WARNING unverified truth (stubs, not hand-checked): {', '.join(unverified)}")
 
 
+# A note may sit fractionally outside its measure's span without being in the
+# wrong measure: timing_truth puts median onset error at 17ms and p90 at 60ms.
+# Anything beyond this is a note printed in the wrong bar, which is the failure
+# this harness exists to see, so keep the window far tighter than a measure.
+SHEET_EDGE_TOLERANCE_S = 0.06
+
+
+def notes_by_measure(notes, truth_measures):
+    """Assign each emitted note to exactly one truth measure.
+
+    A note is claimed by the measure whose span it falls in, and at a boundary by
+    the nearer of the two — never by both, or a note printed on the seam would
+    score as a hit twice while the bar it left stayed empty.
+    """
+    out = {tm["index"]: [] for tm in truth_measures}
+    for note in sorted(notes, key=lambda n: n.time):
+        best, best_gap = None, None
+        for tm in truth_measures:
+            if tm["t0"] - SHEET_EDGE_TOLERANCE_S <= note.time < tm["t1"] + SHEET_EDGE_TOLERANCE_S:
+                gap = max(tm["t0"] - note.time, note.time - tm["t1"], 0.0)
+                if best_gap is None or gap < best_gap:
+                    best, best_gap = tm["index"], gap
+        if best is not None:
+            out[best].append((note.string_index, note.fret))
+    return out
+
+
+def cmd_sheet(clips, config):
+    """Score the notes that reach the sheet, not the ones merely recognised.
+
+    score reads page.digits: a note read correctly off the composite and then
+    lost on its way into the sheet still counts as a hit there. That is a real
+    failure mode — verity's page 18 recognises four notes and attaches no
+    measures, so none of them are printed — and it was invisible until this ran.
+    """
+    total = {"hits": 0, "subs": 0, "dels": 0, "ins": 0}
+    total_near = 0
+    unverified = []
+    print(f"{'clip':<22}{'notes':>7}{'hit':>6}{'sub':>5}{'del':>5}{'ins':>5}"
+          f"{'recall':>9}{'prec':>7}{'in bar':>8}")
+    for clip in clips:
+        path = os.path.join(TRUTH, f"{clip['id']}.json")
+        if not os.path.exists(path):
+            print(f"{clip['id']:<22}  no truth file")
+            continue
+        doc = json.load(open(path))
+        if not doc.get("verified"):
+            unverified.append(clip["id"])
+        truth_measures = doc["measures"]
+
+        sheet, _ = run_paged_pipeline(clip["path"], config, clip["id"],
+                                      Progress(None, STAGES))
+        emitted = notes_by_measure(sheet.notes, truth_measures)
+
+        agg = {"hits": 0, "subs": 0, "dels": 0, "ins": 0}
+        near = 0
+        for tm in truth_measures:
+            t = [tuple(x) for x in tm["notes"]]
+            for key, val in align(t, emitted[tm["index"]]).items():
+                agg[key] += val
+            # A note printed a bar out is a different fault from one never
+            # printed, and wants a different fix. Allow a whole measure of slack
+            # and count the truth notes that turn up somewhere in that window:
+            # the shortfall against `hit` is misplacement, the rest is loss.
+            slack = tm["t1"] - tm["t0"]
+            pool = [(n.string_index, n.fret) for n in sheet.notes
+                    if tm["t0"] - slack <= n.time < tm["t1"] + slack]
+            for note in t:
+                if note in pool:
+                    pool.remove(note)
+                    near += 1
+        n_truth = agg["hits"] + agg["subs"] + agg["dels"]
+        n_hyp = agg["hits"] + agg["subs"] + agg["ins"]
+        recall = agg["hits"] / n_truth if n_truth else 0.0
+        precision = agg["hits"] / n_hyp if n_hyp else 0.0
+        in_bar = agg["hits"] / near if near else 0.0
+        print(f"{clip['id']:<22}{n_truth:>7}{agg['hits']:>6}{agg['subs']:>5}"
+              f"{agg['dels']:>5}{agg['ins']:>5}{recall:>8.1%}{precision:>7.1%}"
+              f"{in_bar:>8.1%}")
+        for key in total:
+            total[key] += agg[key]
+        total_near += near
+
+    n_truth = total["hits"] + total["subs"] + total["dels"]
+    n_hyp = total["hits"] + total["subs"] + total["ins"]
+    if n_truth:
+        recall = total["hits"] / n_truth
+        precision = total["hits"] / n_hyp if n_hyp else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        found = total_near / n_truth if n_truth else 0.0
+        print(f"\nTOTAL notes={n_truth} recall={recall:.2%} precision={precision:.2%} "
+              f"F1={f1:.2%}")
+        print(f"      reached the sheet at all={found:.2%}  "
+              f"of those, printed in the right bar={recall / found if found else 0:.2%}")
+        print("      recall counts a note only in its own bar; the gap between the "
+              "two is notes printed a bar out, not notes lost.")
+    if unverified:
+        print(f"WARNING unverified truth (stubs, not hand-checked): {', '.join(unverified)}")
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in {"dump", "stub", "score"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {"dump", "stub", "score", "sheet"}:
         print(__doc__)
         raise SystemExit(2)
     command, argv = sys.argv[1], sys.argv[2:]
@@ -348,7 +451,8 @@ def main():
     if command == "stub":
         cmd_stub(clips, Config(), blank=blank, sample=sample)
     else:
-        {"dump": cmd_dump, "score": cmd_score}[command](clips, Config())
+        {"dump": cmd_dump, "score": cmd_score,
+         "sheet": cmd_sheet}[command](clips, Config())
 
 
 if __name__ == "__main__":

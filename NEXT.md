@@ -85,16 +85,36 @@ value; it trades one clip against the other and 0.10 wins:
 | 0.20 | 100% | 87.3% / 72.2% | 96.31% / 90.80% |
 | 0.30 | 100% | 76.4% / 73.7% | 93.14% / 92.17% |
 
-**The measurement gap that makes this hard.** `measure_truth.py` scores what was
-recognised on page composites — it reads `page.digits`, never `tabs.json`. A note
-read correctly and then lost on its way into the sheet scores as a hit. That is
-why both attempts above left it at 98.94% while visibly changing the output. The
-timing harness scores emitted notes but only the 36 that have onset truth, so it
-catches damage rather than confirming a gain. Nothing scores *which* notes reach
-the tab.
+**The measurement gap is now closed.** `measure_truth.py sheet` scores the notes
+that reach the sheet, against the same truth `score` uses. Built 2026-08-17,
+after both attempts above changed the output visibly while leaving `score`
+unmoved at 98.94%.
 
-Fixing verity properly probably means closing that gap first, otherwise any
-attempt is judged by a metric that cannot see it.
+    recognised on the composite (score)   98.94%
+    reached the sheet at all              97.63%
+    printed in the right bar (sheet)      85.75%
+
+**This reframes the problem.** Notes are not being lost — 97.6% of them reach the
+sheet. They are being printed in the wrong bar: of everything that arrives, only
+87.8% lands in its own measure. Recognition is not the weak link and neither is
+loss; bar attribution is, and it is worth roughly twelve points.
+
+Per clip, `recall` counts a note only in its own bar and `in bar` is how much of
+what arrived was placed correctly:
+
+| clip | recall | in bar |
+|---|---|---|
+| reference_clip | 83.7% | 87.2% |
+| verity_minecraft | 77.8% | 82.4% |
+| silksong_sherma | 87.3% | 87.3% |
+| danganronpa_kyoko | 94.4% | 94.4% |
+| chainsaw_man | 81.0% | 85.0% |
+
+Every clip is affected, including the two that score 100% on recognition. So
+this is not verity's bug — verity is where a page-turn made it visible.
+
+Use `sheet` to judge any change to attachment or segmentation; `score` cannot
+see them. Its note-to-bar assignment is covered by `tests/test_sheet_metric.py`.
 
 **Options, none free:**
 
