@@ -155,6 +155,10 @@ def run_paged_pipeline(
         lambda i, total: progress.tick(i / max(total, 1), f"frame {i} of {total}"),
         content_rows)
 
+    unreadable = paged.highlight_diagnosis(scan_data, config)
+    if unreadable:
+        raise paged.UnreadableVideo(unreadable)
+
     pages = paged.segment_pages(scan_data, config)
     duration = scan_data["n"] / scan_data["fps"]
     logger.info("paged mode: %d pages over %.1fs", len(pages), duration)
@@ -302,5 +306,12 @@ def run_cli() -> None:
         config.save_sampled_frames = True
     if not args.url and not args.video_path:
         raise SystemExit("Provide a YouTube URL or --video-path")
-    sheet = run_pipeline(args.url, config, video_path=args.video_path or None)
+    try:
+        sheet = run_pipeline(args.url, config, video_path=args.video_path or None)
+    except paged.UnreadableVideo as exc:
+        # Say so and stop. Writing a sheet anyway is worse than writing nothing:
+        # nobody checks a tab against the video it came from, which is exactly
+        # when a confident wrong answer does its damage.
+        print(json.dumps({"error": "unreadable", "reason": str(exc)}))
+        raise SystemExit(2)
     print(json.dumps({"notes": len(sheet.notes), "measures": len(sheet.measures)}))

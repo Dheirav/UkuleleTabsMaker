@@ -1,5 +1,42 @@
 # Open items
 
+## 0. Generality: the reader covers one genre of video, not one channel
+
+Tested 2026-08-17 against three videos chosen from outside the benchmark. None
+produced a usable tab, and they failed in three different ways:
+
+| video | channel | what it is | result |
+|---|---|---|---|
+| Zombie | Ukulele Easy Tabs | notation + TAB staff, page-advancing | no highlight in 4316 frames |
+| One Summer's Day | salamander | empty fretboard grid, positions light up | no printed fret numbers at all |
+| Overtaken | salamander | ASCII tab over a cream blanket | mask matched the blanket, 100% of frames |
+
+Two of the three are squarely in scope and both fail for the same reason: they
+are **tutorial videos with a tab drawn on top**, not **tab-player screencasts**.
+The second genre is what this reader was built for, and only it draws a playback
+highlight — which is not merely how measures are found but the sole timing
+source. `scan` derives spans from it, `attach_measures` builds on those, and
+`notes_from_pages` iterates them. No highlight is not degraded timing, it is no
+notes.
+
+Note the two salamander videos differ from each other more than from other
+channels. Generality here is per-genre, not per-channel.
+
+**Before building anything for genre 2, count the genres.** Sample 20-30 tab
+videos and tally which of the three they are. That decides whether a second
+timing source is worth the work or whether the honest move is to stay on
+screencasts and say so. Three videos prove the genres exist; they cannot give
+the mix.
+
+Candidate timing sources if genre 2 turns out to dominate: Zombie prints rhythm
+in its standard notation above the tab, and audio onsets are the other option.
+
+**Done: the gate.** `paged.highlight_diagnosis` refuses a video it cannot time
+rather than emitting a sheet, because Overtaken produced 18 notes and a PDF off
+a blanket, and nobody checks a tab against the video it came from. Do not treat
+a passing gate as a promise of accuracy: it establishes only that there is a
+moving highlight to time against.
+
 Written 2026-08-16, at the end of the AV1 decoding work. Everything below is
 either unfinished or something the next person should know before touching the
 accuracy numbers.

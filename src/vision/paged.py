@@ -45,6 +45,52 @@ class Page:
     instability: float = 0.0
 
 
+class UnreadableVideo(RuntimeError):
+    """This video carries no signal the paged reader can work from.
+
+    Raised rather than returning an empty sheet, because an empty sheet is
+    indistinguishable from a piece with no notes, and a sheet built from a
+    mis-firing mask looks like a real answer.
+    """
+
+
+def highlight_diagnosis(scan_data: Dict, config: Config) -> Optional[str]:
+    """Why this video cannot be read, in words, or None if it can be.
+
+    Timing comes entirely from the highlight a tab player paints on the measure
+    being played. Two videos carry none: one that never draws a highlight, and
+    one where the mask matches something that is not a highlight. The second is
+    the dangerous case — it yields measures, and notes, and a sheet, all of it
+    off a wall behind the player's hands.
+
+    The tell is movement. A highlight steps from measure to measure, so its left
+    edge takes many positions and travels several times its own width. Anything
+    static matches every frame from a single position.
+    """
+    spans = [s for s in scan_data["spans"] if s is not None]
+    total = max(len(scan_data["spans"]), 1)
+    share = len(spans) / total
+    if share < config.highlight_min_frame_share:
+        return (f"no measure highlight found — one was visible in {share:.0%} of "
+                f"frames. This reader takes its timing from the highlight a tab "
+                f"player draws on the measure being played, and a video that "
+                f"shows a tab without playing it back carries nothing to time "
+                f"against.")
+
+    lefts = [s[0] for s in spans]
+    widths = sorted(s[1] - s[0] for s in spans)
+    median_width = widths[len(widths) // 2] or 1
+    travel = (max(lefts) - min(lefts)) / median_width
+    positions = len(set(lefts))
+    if positions < config.highlight_min_positions or travel < config.highlight_min_travel:
+        return (f"the highlight never moves — it matched {share:.0%} of frames "
+                f"from {positions} position(s), travelling {travel:.2f} of its own "
+                f"width. A highlight steps between measures; something that "
+                f"matches everywhere and stays put is a warm-coloured background, "
+                f"not a playback highlight.")
+    return None
+
+
 def highlight_mask(bgr: np.ndarray) -> np.ndarray:
     """Warm (yellow) 'currently playing' fill used by tab players."""
     b = bgr[:, :, 0].astype(np.int16)

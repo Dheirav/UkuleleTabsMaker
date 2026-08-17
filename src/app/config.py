@@ -77,6 +77,15 @@ class Config:
     page_cut_merge_frames: int = 4
     page_guard_frames: int = 3
     page_min_frames: int = 5
+    # What tells a playback highlight from a warm-coloured background. The mask
+    # keys on colour, so a cream wall behind a player's hands matches it on every
+    # frame; the difference is that a real highlight steps from measure to
+    # measure and a wall never moves. Measured over the labelled clips, which
+    # hold 5 to 43 distinct positions and travel several times the highlight's
+    # own width, against 1 position and no travel for a background match.
+    highlight_min_frame_share: float = 0.05
+    highlight_min_positions: int = 3
+    highlight_min_travel: float = 0.5
     # Odd, so the median is one of the samples rather than a mean of two. The
     # count only has to outvote the playhead and highlight at each pixel, which
     # is a fraction of the page's frames however many are taken.
