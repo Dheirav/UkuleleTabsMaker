@@ -57,7 +57,46 @@ matching no page at all, gets nothing.
   24.30, roughly half a second early, inside measure 22 instead of 23. The fourth
   note `(2,0)` is absent entirely.
 
-**Before fixing, decide the model.** Options, none free:
+**Refined 2026-08-17.** The digits are on page 18, not 17. Page 18 reads
+`(1,0) (2,3) (1,0) (2,0)` at x 70/530/685/1145 — exactly truth measure 23 — then
+`(0,3) (0,0)`, exactly measure 24. Recognition is not the problem: those glyphs
+are read correctly and sit in `page.digits`.
+
+They never reach the tab. Page 18 has 6 digits and **zero attached measures**, and
+`notes_from_pages` iterates `page.measures`, so the page contributes nothing.
+`segment_pages` holds `page_guard_frames` back from each cut so composites never
+average a page mid-turn, which leaves page 18 with a 6-frame window against
+`page_min_frames = 5`; its measures fall in the guard and are dropped.
+
+**Two fixes tried, both reverted, neither supported by the numbers:**
+
+- Track the highlight *forward* from each page into the following guard. Reader
+  went 68 → 88 notes on verity with visible duplicates; no harness moved.
+- Track *backward* from the previous page's last frame (so the guard belongs to
+  the incoming page). This recovers measure 24 exactly and part of 23, but the
+  timing harness worsens: silksong p90 60ms → 238ms, within-50ms 83% → 81%.
+
+**Also ruled out: the threshold.** `page_change_threshold` is already at its best
+value; it trades one clip against the other and 0.10 wins:
+
+| threshold | verity | silksong | TOTAL |
+|---|---|---|---|
+| **0.10 (current)** | 88.9% | 100% | **98.94% / 100%** |
+| 0.20 | 100% | 87.3% / 72.2% | 96.31% / 90.80% |
+| 0.30 | 100% | 76.4% / 73.7% | 93.14% / 92.17% |
+
+**The measurement gap that makes this hard.** `measure_truth.py` scores what was
+recognised on page composites — it reads `page.digits`, never `tabs.json`. A note
+read correctly and then lost on its way into the sheet scores as a hit. That is
+why both attempts above left it at 98.94% while visibly changing the output. The
+timing harness scores emitted notes but only the 36 that have onset truth, so it
+catches damage rather than confirming a gain. Nothing scores *which* notes reach
+the tab.
+
+Fixing verity properly probably means closing that gap first, otherwise any
+attempt is judged by a metric that cannot see it.
+
+**Options, none free:**
 
 - Extend each page's span to the next page's start, so no measure falls in a gap.
   Careful: measure 22 (x 384-1918) and measure 23 (x 0-1218) then both overlap
