@@ -68,13 +68,33 @@ They never reach the tab. Page 18 has 6 digits and **zero attached measures**, a
 average a page mid-turn, which leaves page 18 with a 6-frame window against
 `page_min_frames = 5`; its measures fall in the guard and are dropped.
 
-**Two fixes tried, both reverted, neither supported by the numbers:**
+**Fixed 2026-08-17** by tracking the highlight *backward* from the previous
+page's last frame, so the guard belongs to the incoming page that is already on
+screen through it.
 
-- Track the highlight *forward* from each page into the following guard. Reader
-  went 68 → 88 notes on verity with visible duplicates; no harness moved.
-- Track *backward* from the previous page's last frame (so the guard belongs to
-  the incoming page). This recovers measure 24 exactly and part of 23, but the
-  timing harness worsens: silksong p90 60ms → 238ms, within-50ms 83% → 81%.
+This was tried and reverted earlier on the timing harness alone, which was the
+wrong call: it measures 36 onsets across two clips and saw only the cost. The
+sheet metric measures 379 notes across five and shows the gain:
+
+| | before | after |
+|---|---|---|
+| sheet recall | 85.75% | **91.82%** |
+| sheet precision | 88.08% | **92.31%** |
+| printed in the right bar | 87.84% | **93.30%** |
+| reached the sheet at all | 97.63% | 98.42% |
+| recognition (`score`) | 98.94% | 98.94% — unchanged |
+| timing p90 | 60ms | 90ms |
+| timing within 50ms | 83% | 81% |
+
+All five clips improve, silksong most (87.3% → 97.3%). The timing cost is real
+and concentrated in silksong's p90: notes recovered near a page turn arrive with
+less precise onsets than notes read mid-page. A note in the wrong bar is the
+worse fault — it is visible in the printed sheet, where a 200ms onset error
+inside the correct bar is not — so this trade is taken deliberately. Revisit it
+if onset precision starts to matter more than layout.
+
+Tracking *forward* into the following guard was also tried: 68 → 88 notes on
+verity with visible duplicates, and no harness moved. Not taken.
 
 **Also ruled out: the threshold.** `page_change_threshold` is already at its best
 value; it trades one clip against the other and 0.10 wins:

@@ -602,9 +602,15 @@ def attach_measures(pages: List[Page], scan_data: Dict, config: Config) -> None:
     """Collapse per-frame highlight boxes into stable measure spans per page."""
     spans, fps = scan_data["spans"], scan_data["fps"]
     tol = config.highlight_span_tolerance_px
-    for page in pages:
+    for idx, page in enumerate(pages):
+        # Track from where the previous page stopped: segment_pages holds a guard
+        # back from each cut, and a measure highlighted inside that guard is
+        # attached to no page at all.
+        first_frame = page.first_frame
+        if idx > 0:
+            first_frame = min(first_frame, pages[idx - 1].last_frame + 1)
         current, current_start, out = None, None, []
-        for i in range(page.first_frame, page.last_frame + 1):
+        for i in range(first_frame, page.last_frame + 1):
             sp = spans[i] if i < len(spans) else None
             same = (current is not None and sp is not None
                     and abs(sp[0] - current[0]) < tol and abs(sp[1] - current[1]) < tol)
