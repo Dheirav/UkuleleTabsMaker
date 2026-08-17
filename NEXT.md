@@ -29,13 +29,47 @@ no OpenCV. An existing venv will not upgrade itself — it keeps 4.10.0.84 and
 silently fails on AV1 until someone reinstalls. `test_opencv_build_decodes_av1`
 catches it, but only when someone runs pytest.
 
-## 1. verity_minecraft is genuinely weak
+## 1. verity_minecraft: measure 23 falls into a page-composite gap
 
-The only place the two harnesses agree something is wrong. Every other clip
-scores 100% on the measure-keyed harness; verity scores 88.9% recall with 90.9%
-coverage, and it is the worst clip on the page-keyed harness too.
+Diagnosed 2026-08-16. verity's entire 88.9% is one measure. Every other measure
+in the sampled truth reads perfectly; measure 23 (t 24.45-25.00, truth
+`(1,0) (2,3) (1,0) (2,0)`) accounts for all 4 deletions and the one uncovered
+measure.
 
-Start here. It is the one open question with real evidence behind it.
+**Cause.** Page composites do not cover the whole time a page is on screen:
+
+    page 17: t 23.65-24.30   digits=7
+    page 18: t 25.15-25.45   digits=6     <-- 0.85s gap
+    measure 23: t 24.45-25.00             <-- lands entirely inside the gap
+
+Page 17 carries measure 23's digits (x=1127 `(1,0)`, 1587 `(2,3)`, 1742 `(1,0)`),
+but its span ends at 24.30, before measure 23 begins. Measure 22 spans x 384-1918
+and overlaps page 17 in time, so it claims those digits by x-range. Measure 23,
+matching no page at all, gets nothing.
+
+**This is not only a scoring artifact.** The two code paths differ:
+
+- `scripts/measure_truth.py:73` `detections_by_measure` matches pages to measures
+  by *time overlap*, so measure 23 scores zero.
+- `src/parsing/paged_tab.py:128` `notes_from_pages` iterates `page.measures`, so
+  it does not hit the gap the same way — but it still assigns by x-range, and the
+  emitted tab shows the damage: those three notes come out at t=23.77, 24.17,
+  24.30, roughly half a second early, inside measure 22 instead of 23. The fourth
+  note `(2,0)` is absent entirely.
+
+**Before fixing, decide the model.** Options, none free:
+
+- Extend each page's span to the next page's start, so no measure falls in a gap.
+  Careful: measure 22 (x 384-1918) and measure 23 (x 0-1218) then both overlap
+  page 17 and both claim the digits between x 384 and 1218, turning deletions
+  into duplicates.
+- Attach each measure to the nearest page in time when none overlaps.
+- Make per-measure x-ranges disjoint, or discriminate by which staff line a digit
+  sits on. `detections_by_measure` has no vertical filter at all: a digit is
+  claimed by any measure whose x-range contains it, whatever line it is on.
+
+Any of these moves every clip's numbers, so re-score all five afterwards with
+`scripts/measure_truth.py score` — not `benchmark.py`.
 
 ## 2. Decide what `scripts/benchmark.py` is for
 

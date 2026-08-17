@@ -1,4 +1,17 @@
-"""Reproducible accuracy harness for the paged tab reader.
+"""Page-keyed accuracy harness for the paged tab reader.
+
+NOT the headline accuracy metric. Use scripts/measure_truth.py for that.
+
+Truth here is keyed to page indices, so any change to page segmentation moves
+the labels underneath the score: the same glyphs land on differently cut pages
+and register as insertions rather than hits. Lowering page_change_threshold in
+42566e1 took silksong from 100% to 30.1% precision that way, without a single
+note being read differently. Measure-keyed truth exists precisely because of
+this, and reports 98.94% recall / 100% precision on the same reader.
+
+Read the scores below as a segmentation diagnostic. A drop here means pages are
+being cut differently, which may be an improvement; it is not evidence that
+recognition regressed. NEXT.md records the bisect behind those numbers.
 
   python scripts/benchmark.py dump   [id ...]   # page composites + montage, for labelling
   python scripts/benchmark.py score  [id ...]   # score detections against benchmark/truth
@@ -175,6 +188,9 @@ def cmd_stub(clips, config):
 def cmd_score(clips, config):
     total = {"hits": 0, "subs": 0, "dels": 0, "ins": 0}
     unverified = []
+    print("Page-keyed scores: a segmentation diagnostic, not the accuracy figure.")
+    print("Re-cutting pages moves these numbers without changing a single note.")
+    print("For recognition accuracy run scripts/measure_truth.py score.\n")
     print(f"{'clip':<22}{'truth':>7}{'hit':>6}{'sub':>5}{'del':>5}{'ins':>5}{'recall':>9}{'prec':>8}")
     for clip in clips:
         truth_path = os.path.join(TRUTH, f"{clip['id']}.json")
