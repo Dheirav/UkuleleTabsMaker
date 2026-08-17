@@ -40,13 +40,39 @@ Treat the fraction as directional. The sample follows YouTube's ranking and
 three query phrasings, and six of the ten no-marker videos come from just two
 channels.
 
-**Cheapest win: make the highlight adaptive.** One sampled video steps an orange
-outline box through the music — a real measure highlight, found in 0% of frames,
-because the mask wants a warm fill and this is an outline in another hue. The
-cursor-only video is the same story. Neither is missing a timing signal; the
-colour rule cannot see it. `playhead_by_motion` already solved this one layer
-down by keying on what moves rather than what colour it is. Doing the same for
-the highlight plausibly takes 3 readable to 5 of 15.
+**Adaptive highlight: attempted 2026-08-17, reverted, harder than it looks.**
+One sampled video steps an orange outline box through the music — a real measure
+highlight the warm mask finds in 0% of frames. Making the mask colour-agnostic
+looked like the cheap win. It is not, and the reason is worth keeping.
+
+A colour-agnostic mask (saturated and light, any hue — the property
+`notation_ink` already relies on from the other side) finds the box, but it also
+finds the person playing. Three attempts, each measured on the orange-box video:
+
+| attempt | median span | travel | verdict |
+|---|---|---|---|
+| saturation alone | 1184px of 1253 | 0.06 | frame, not highlight |
+| confined to neutral "page" rows | 1169px | 0.36 | still the frame |
+| plus a strict tall-column test (0.40) | 165px | 4.93 | the box, correctly |
+
+The third works — an outline is found by its two tall vertical sides, so
+demanding a *tall* column rejects the stray colour that otherwise stretches the
+span across the frame. The threshold has to be strict, not loose, which is the
+opposite of the obvious guess.
+
+It still cannot ship: with that mask the Zombie video **passes the gate**, and
+Zombie has no highlight at all. A player's moving hands make tall coloured
+columns that shift about, which is indistinguishable from a stepping highlight on
+every statistic tried. Forward-advance was the obvious separator and it fails
+outright — `reference_clip`, a good clip, advances forward 52% of the time and
+Zombie also 52%.
+
+So the blocker is not detecting the box; it is telling a box from a hand once the
+mask is loose enough to see both. A false accept is worse than the refusal it
+replaces, so this stays reverted until there is a discriminator. Ideas not yet
+tried: require the marker to keep a constant height and vertical position (a box
+sits on the staff, hands do not), or to appear only within the rows where
+notation ink lives.
 
 Both are saved as test cases: youtu.be/wmXnzxOcJRI (orange outline) and
 youtu.be/oDGo0LDH9UE (cursor only), against youtu.be/21MVI1aOJQI and
