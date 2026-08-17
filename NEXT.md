@@ -22,14 +22,45 @@ notes.
 Note the two salamander videos differ from each other more than from other
 channels. Generality here is per-genre, not per-channel.
 
-**Before building anything for genre 2, count the genres.** Sample 20-30 tab
-videos and tally which of the three they are. That decides whether a second
-timing source is worth the work or whether the honest move is to stay on
-screencasts and say so. Three videos prove the genres exist; they cannot give
-the mix.
+**The genres are now counted.** 17 videos across 12 channels, sampled from three
+YouTube searches on 2026-08-17:
 
-Candidate timing sources if genre 2 turns out to dominate: Zombie prints rhythm
-in its standard notation above the tab, and audio onsets are the other option.
+| what the video is | count | reader today |
+|---|---|---|
+| screencast with a warm measure highlight | 3 | **readable** |
+| highlight present, different style (orange outline box) | 1 | refused |
+| playhead cursor only, no measure highlight | 1 | refused |
+| tab drawn over live video, no timing marker at all | **10** | refused |
+| not song tabs (how-to-read lessons) | 2 | n/a |
+
+Of the 15 that are actually song tabs, **about 3 — a fifth — can be read today**.
+Two thirds carry no playback marker of any kind.
+
+Treat the fraction as directional. The sample follows YouTube's ranking and
+three query phrasings, and six of the ten no-marker videos come from just two
+channels.
+
+**Cheapest win: make the highlight adaptive.** One sampled video steps an orange
+outline box through the music — a real measure highlight, found in 0% of frames,
+because the mask wants a warm fill and this is an outline in another hue. The
+cursor-only video is the same story. Neither is missing a timing signal; the
+colour rule cannot see it. `playhead_by_motion` already solved this one layer
+down by keying on what moves rather than what colour it is. Doing the same for
+the highlight plausibly takes 3 readable to 5 of 15.
+
+Both are saved as test cases: youtu.be/wmXnzxOcJRI (orange outline) and
+youtu.be/oDGo0LDH9UE (cursor only), against youtu.be/21MVI1aOJQI and
+youtu.be/4BLgpXCS1po which already read.
+
+**The big one: timing for the no-marker genre.** No highlight work reaches those
+ten. They are consistent and cleanly rendered — a notation staff above a TAB
+strip, advancing a page at a time — so recognition should do well; only timing is
+absent. Most print standard notation, whose note durations are a complete timing
+source already on the page. Audio onsets are the alternative.
+
+**The gate was checked against four of these**, none of which it had been tuned
+on: both warm-highlight videos read, both others refused, no false accept and no
+false refusal.
 
 **Done: the gate.** `paged.highlight_diagnosis` refuses a video it cannot time
 rather than emitting a sheet, because Overtaken produced 18 notes and a PDF off
