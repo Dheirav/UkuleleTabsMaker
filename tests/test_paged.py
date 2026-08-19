@@ -491,6 +491,20 @@ def test_unevenly_spaced_darkness_is_not_mistaken_for_a_staff():
     assert find_string_lines(strip, config) == [51, 89, 126, 163]
 
 
+def test_tab_is_read_rather_than_the_notation_printed_above_it():
+    """The genre this reader is being pointed at prints standard notation over
+    the tab. A notation staff has five lines to the tab's four, so it is the
+    *longer* run — and taking the longest read the melody line as if it were tab
+    and handed every note a string the instrument does not have."""
+    config = Config()
+    strip = np.full((400, 900), 245, np.uint8)
+    for y in (79, 97, 114, 132, 149):      # notation staff, tightly spaced
+        strip[y, :] = 60
+    for y in (262, 289, 315, 341):         # tab staff, one line per string
+        strip[y, :] = 60
+    assert find_string_lines(strip, config) == [262, 289, 315, 341]
+
+
 def test_a_clean_staff_is_left_alone():
     config = Config()
     strip = np.full((200, 900), 245, np.uint8)

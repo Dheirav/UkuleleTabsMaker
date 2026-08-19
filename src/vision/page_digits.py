@@ -37,28 +37,64 @@ def find_string_lines(gray: np.ndarray, config: Config) -> List[int]:
     return _evenly_spaced(([int(np.mean(g)) for g in groups]), config)
 
 
-def _evenly_spaced(lines: List[int], config: Config) -> List[int]:
-    """The longest run of lines a staff could be.
+def _consistent(run: List[int], config: Config) -> bool:
+    """Whether these lines sit at one spacing, as a staff does by construction."""
+    if len(run) < 3:
+        return False
+    gaps = [b - a for a, b in zip(run, run[1:])]
+    middle = sorted(gaps)[len(gaps) // 2]
+    if middle <= 0:
+        return False
+    return all(abs(g - middle) <= config.string_line_spacing_tolerance * middle
+               for g in gaps)
 
-    A staff is equally spaced by construction; stray horizontal darkness is not.
-    Selecting on spacing therefore drops the stray without needing to be told how
-    many strings to expect, which keeps this honest on a video that shows
-    something other than a ukulele.
+
+def _maximal_runs(lines: List[int], config: Config) -> List[List[int]]:
+    """Every staff the lines could be, none of them part of a longer one.
+
+    Maximality is what makes the count mean anything: the top four lines of a
+    five-line staff are just as evenly spaced as the staff itself, so without it
+    a notation staff offers a spurious four-line reading of its own.
+    """
+    out: List[List[int]] = []
+    total = len(lines)
+    for start in range(total):
+        for end in range(start + 3, total + 1):
+            run = lines[start:end]
+            if not _consistent(run, config):
+                continue
+            if start > 0 and _consistent(lines[start - 1:end], config):
+                continue
+            if end < total and _consistent(lines[start:end + 1], config):
+                continue
+            out.append(run)
+    return out
+
+
+def _evenly_spaced(lines: List[int], config: Config) -> List[int]:
+    """The lines of the staff the fret numbers are written on.
+
+    Tab for a ukulele has one line per string, so the staff wanted here is the
+    one with exactly four. That is worth saying explicitly because the genre this
+    reader is being pointed at prints standard notation above the tab, and a
+    notation staff has five lines and is therefore the *longer* run: taking the
+    longest, as this did while every video was tab alone, reads the melody line
+    as if it were tab and hands every note a string it does not have.
+
+    Where nothing has four lines the longest run is still the best guess, which
+    keeps this honest on a video showing an instrument with some other number of
+    strings.
     """
     if len(lines) < 3:
         return lines
-    best: List[int] = []
-    for start in range(len(lines)):
-        for end in range(start + 3, len(lines) + 1):
-            run = lines[start:end]
-            gaps = [b - a for a, b in zip(run, run[1:])]
-            middle = sorted(gaps)[len(gaps) // 2]
-            if middle <= 0:
-                continue
-            spread = config.string_line_spacing_tolerance
-            if all(abs(g - middle) <= spread * middle for g in gaps) and len(run) > len(best):
-                best = run
-    return best or lines
+    runs = _maximal_runs(lines, config)
+    if not runs:
+        return lines
+    strings = len(config.tuning)
+    exact = [run for run in runs if len(run) == strings]
+    if exact:
+        return max(exact, key=lambda run: run[-1] - run[0])
+    return max(runs, key=len)
 
 
 def strip_rules(gray: np.ndarray, config: Config) -> np.ndarray:
