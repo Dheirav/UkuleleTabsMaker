@@ -206,6 +206,113 @@ def find_content_rows(video_path: str, config: Config, probes: int = CONTENT_ROW
     return int(rows.min()), int(rows.max()) + 1
 
 
+def row_motion(video_path: str, config: Config,
+               probes: Optional[int] = None) -> np.ndarray:
+    """Median frame-to-frame change per row.
+
+    Consecutive frames, not frames spread over the video: the question is what
+    moves continuously, and any two frames far apart also differ by every page
+    turn between them, which is the one kind of change this must not see.
+    """
+    probes = probes or config.overlay_probe_pairs
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    diffs = []
+    for i in np.linspace(0, max(total - 2, 0), probes).astype(int):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
+        ok_a, a = cap.read()
+        ok_b, b = cap.read()
+        if not (ok_a and ok_b):
+            continue
+        ga = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        gb = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        diffs.append(np.abs(gb - ga).mean(axis=1))
+    cap.release()
+    if not diffs:
+        return np.zeros(0, dtype=np.float32)
+    return np.median(np.array(diffs), axis=0)
+
+
+def _runs(mask: np.ndarray) -> List[Tuple[int, int]]:
+    """Every contiguous True run, longest first."""
+    out: List[Tuple[int, int]] = []
+    start = None
+    for i, on in enumerate(mask):
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            out.append((start, i))
+            start = None
+    if start is not None:
+        out.append((start, len(mask)))
+    return sorted(out, key=lambda r: r[1] - r[0], reverse=True)
+
+
+def find_overlay_band(video_path: str, config: Config,
+                      probes: Optional[int] = None) -> Optional[Tuple[int, int]]:
+    """The still rows of a tab laid over a live video, or None if it is not one.
+
+    Returns None unless the picture genuinely splits in two: one still band big
+    enough to hold a tab, and a moving region big enough to be a video. A
+    screencast has no moving region and must go on being read whole, so no answer
+    is the common case here rather than a failure.
+
+    Exactly one still band is required, and that is what tells an overlay from a
+    player that scrolls. A tab drawn over a video divides the frame in two, still
+    part against moving part. A scrolling player instead animates a strip in the
+    middle and leaves stillness both above and below it -- notation at the top,
+    a fretboard diagram at the bottom -- and cropping to either half would throw
+    away the notation or read the diagram as if it were notation.
+    """
+    motion = row_motion(video_path, config, probes)
+    if len(motion) == 0:
+        return None
+    lit = _lit_rows(video_path, len(motion))
+    inside = np.where(lit)[0]
+    if len(inside) == 0:
+        return None
+    # Letterboxing is as still as a tab and would otherwise count as one. Cut it
+    # the way find_content_rows does, by the outermost rows carrying any picture,
+    # so that a dark row within the tab itself is not mistaken for the edge.
+    top, bottom = int(inside.min()), int(inside.max()) + 1
+    motion = motion[top:bottom]
+    height = len(motion)
+    if height == 0:
+        return None
+    if (motion > config.overlay_moving_motion).mean() < config.overlay_min_moving_ratio:
+        return None
+    still = motion <= config.overlay_still_motion
+    bands = [r for r in _runs(still)
+             if (r[1] - r[0]) >= config.overlay_min_still_ratio * height]
+    if len(bands) != 1:
+        return None
+    y0, y1 = bands[0]
+    return top + int(y0), top + int(y1)
+
+
+def _lit_rows(video_path: str, height: int) -> np.ndarray:
+    """Rows carrying picture rather than letterbox, from a frame mid-video."""
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    cap.set(cv2.CAP_PROP_POS_FRAMES, total // 2)
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        return np.ones(height, dtype=bool)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return (gray > 40).mean(axis=1) > 0.5
+
+
+def find_tab_rows(video_path: str, config: Config,
+                  on_step: Optional[Callable[[int], None]] = None) -> Tuple[int, int]:
+    """The rows to read the tab from: the overlay band where there is one,
+    otherwise every row that is not letterbox."""
+    band = find_overlay_band(video_path, config)
+    if band is not None:
+        return band
+    return find_content_rows(video_path, config, on_step=on_step)
+
+
 def measure_scroll(video_path: str, config: Config,
                    on_step: Optional[Callable[[int, int], None]] = None,
                    content_rows: Optional[Tuple[int, int]] = None) -> float:

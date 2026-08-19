@@ -240,8 +240,10 @@ def run_pipeline(
     source = url if url else (video_path or "local")
     progress.stage("probe", "checking whether the tab scrolls")
     # Found once and shared: locating the content rows costs 40 seeks, and both
-    # the scroll probe and the scan need the same answer.
-    content_rows = paged.find_content_rows(video_path, config)
+    # the scroll probe and the scan need the same answer. Where the tab is drawn
+    # over a live video this is the tab's own band, so neither the scroll probe
+    # nor the page signature is reading the player instead of the notation.
+    content_rows = paged.find_tab_rows(video_path, config)
     paged_video = paged.is_paged(
         video_path, config,
         lambda i, total: progress.tick(i / max(total, 1), f"probe {i} of {total}"),

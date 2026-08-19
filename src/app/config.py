@@ -83,6 +83,23 @@ class Config:
     # measure and a wall never moves. Measured over the labelled clips, which
     # hold 5 to 43 distinct positions and travel several times the highlight's
     # own width, against 1 position and no travel for a background match.
+    # --- tab drawn over a live video ---
+    # Two thirds of tab videos on YouTube lay a tab band over a shot of someone
+    # playing. find_content_rows only strips letterboxing, so it keeps the live
+    # half, and every page turn is then buried under the player's hands: one such
+    # video segmented into 3 pages over 114s and read 17 glyphs.
+    #
+    # The tab holds still between page turns and the video under it never does,
+    # so the split is visible in per-row motion. Measured over the local videos,
+    # the moving half of an overlay runs 2.6 to 17.9 while a screencast peaks at
+    # 1.25 and usually at 0.0, so the thresholds sit in that gap rather than on a
+    # guess. Both sides must be substantial: a screencast has no moving half at
+    # all and must keep today's behaviour.
+    overlay_probe_pairs: int = 40
+    overlay_still_motion: float = 0.5
+    overlay_moving_motion: float = 1.5
+    overlay_min_still_ratio: float = 0.20
+    overlay_min_moving_ratio: float = 0.15
     highlight_min_frame_share: float = 0.05
     highlight_min_positions: int = 3
     highlight_min_travel: float = 0.5
