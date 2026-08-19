@@ -21,6 +21,7 @@ from src.parsing.parser import parse_measures
 from src.vision import paged
 from src.vision.glyphs import GlyphClassifier
 from src.vision.page_digits import collect_sample_glyphs, read_page_detail
+from src.parsing.audio_timing import audio_diagnosis, notes_from_audio
 from src.parsing.paged_tab import measure_coverage, notes_from_pages
 from src.output.json import write_json
 from src.output.pdf import write_pdf
@@ -155,9 +156,17 @@ def run_paged_pipeline(
         lambda i, total: progress.tick(i / max(total, 1), f"frame {i} of {total}"),
         content_rows)
 
+    # A video that marks nothing on the page can still be timed by the sound of
+    # it being played, so a failed highlight is no longer the end of the road --
+    # but the audio has to answer for itself further down, and refuses there if
+    # what it hears is not what the page shows.
     unreadable = paged.highlight_diagnosis(scan_data, config)
+    use_audio = False
     if unreadable:
-        raise paged.UnreadableVideo(unreadable)
+        if not config.use_audio_timing:
+            raise paged.UnreadableVideo(unreadable)
+        use_audio = True
+        logger.info("no usable highlight; timing from the soundtrack instead")
 
     pages = paged.segment_pages(scan_data, config)
     duration = scan_data["n"] / scan_data["fps"]
@@ -167,7 +176,8 @@ def run_paged_pipeline(
         video_path, pages, scan_data, config,
         lambda i, total: progress.tick(i / max(total, 1),
                                        f"{len(pages)} pages · frame {i} of {total}"))
-    paged.attach_measures(pages, scan_data, config)
+    if not use_audio:
+        paged.attach_measures(pages, scan_data, config)
 
     progress.stage("read")
     classifier = GlyphClassifier(collect_sample_glyphs(pages, config))
@@ -182,7 +192,17 @@ def run_paged_pipeline(
     progress.note(f"font {font_name} · {sum(len(p.digits) for p in pages)} glyphs")
 
     progress.stage("timing")
-    reconstruction = notes_from_pages(pages, scan_data, config)
+    audio_stats: dict = {}
+    if use_audio:
+        reconstruction, audio_stats = notes_from_audio(pages, video_path, config)
+        refused = audio_diagnosis(audio_stats, config)
+        if refused:
+            raise paged.UnreadableVideo(f"{unreadable}\n\n{refused}")
+        logger.info("timed from audio: %d onsets, %.0f%% of the tab matched",
+                    int(audio_stats["audio_onsets"]),
+                    100.0 * audio_stats["audio_matched_share"])
+    else:
+        reconstruction = notes_from_pages(pages, scan_data, config)
     measures = parse_measures(reconstruction.notes, reconstruction.bar_times)
     sheet = TabSheet(
         notes=reconstruction.notes,
@@ -190,6 +210,7 @@ def run_paged_pipeline(
         metadata={
             "source_url": source,
             "tab_mode": "paged",
+            "timing": "audio" if use_audio else "highlight",
             "pages": str(len(pages)),
             "font": os.path.basename(classifier.font_path or "none"),
         },
@@ -207,6 +228,7 @@ def run_paged_pipeline(
         "playhead_frames": float(sum(1 for h in scan_data["heads"] if h >= 0)),
         "measures_tracked": float(sum(len(p.measures) for p in pages)),
         "glyph_font_fit": float(classifier.fit),
+        **audio_stats,
         # Worst page ghosting seen. High means a page boundary landed mid-turn.
         "worst_page_instability": float(max((p.instability for p in pages), default=0.0)),
         "scan_stride": float(scan_data.get("stride", 1)),

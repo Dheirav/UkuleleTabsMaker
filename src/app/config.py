@@ -83,6 +83,47 @@ class Config:
     # measure and a wall never moves. Measured over the labelled clips, which
     # hold 5 to 43 distinct positions and travel several times the highlight's
     # own width, against 1 position and no travel for a background match.
+    # --- timing from the soundtrack ---
+    # For a tab drawn over a playthrough there is no highlight and no cursor, but
+    # the audio is the notes themselves. Measured on two videos of that kind
+    # whose timing is otherwise known, onsets land within 15 to 17ms of the note
+    # they belong to, against the 50ms the visual reader is scored at.
+    audio_sample_rate: int = 22050
+    audio_frame: int = 1024
+    audio_hop: int = 256          # 11.6ms, well inside the 50ms scoring window
+    audio_log_gain: float = 100.0
+    audio_onset_delta: float = 0.5
+    audio_threshold_window_s: float = 0.30
+    audio_min_gap_s: float = 0.06
+    # A soprano ukulele runs C4 to about A5; the margin either side leaves room
+    # for an octave slip rather than letting one fall off the end of the range.
+    audio_min_midi: int = 55
+    audio_max_midi: int = 88
+    audio_harmonics: int = 5
+    audio_pitch_skip_s: float = 0.01
+    audio_pitch_window_s: float = 0.12
+    audio_pitch_fft: int = 32768
+    # How far a note may sit from the onset claimed for it. Wider than the error
+    # actually seen, because the cost of leaving a note untimed is worse than the
+    # cost of timing it slightly wrong.
+    audio_match_window_s: float = 0.40
+    audio_pitch_bonus: float = 1.0
+    audio_octave_bonus: float = 0.5
+    audio_skip_penalty: float = 0.3
+    # Notes within this fraction of the page width share an x, so they are one
+    # chord and take one time between them.
+    audio_chord_x_ratio: float = 0.008
+    # A page is turned by hand, a little after or before the music moves on.
+    audio_page_margin_s: float = 1.0
+    # Where the audio route may be used at all, and when it must give up.
+    use_audio_timing: bool = True
+    audio_min_onsets: int = 8
+    audio_min_matched_share: float = 0.75
+    # Measured across five videos whose timing is known independently: the four
+    # that align well agree on pitch 95% to 98% of the time, the one that does
+    # not agrees 88%, and a video whose tab is misread agrees 70%.
+    audio_min_pitch_agreement: float = 0.90
+
     # --- tab drawn over a live video ---
     # Two thirds of tab videos on YouTube lay a tab band over a shot of someone
     # playing. find_content_rows only strips letterboxing, so it keeps the live
