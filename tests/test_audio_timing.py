@@ -209,3 +209,15 @@ def test_a_run_that_read_almost_nothing_is_refused():
                               "audio_matched_share": 1.0,
                               "audio_pitch_agreement": 0.9}, config)
     assert reason is not None and "too little of the tab was read" in reason
+
+
+def test_the_pitch_bar_sits_where_the_error_breaks():
+    """Calibrated, not guessed. Twenty-two videos carrying both a highlight and
+    playthrough audio, sliced into chunks the size this gate judges, put a
+    tenfold break in timing error between the bands either side of 85%: 218ms
+    below against 22ms above. Just under the bar is refused, just over is not."""
+    config = Config()
+    stats = {"audio_onsets": 300.0, "audio_attacks": 120.0,
+             "audio_matched_share": 0.95}
+    assert audio_diagnosis({**stats, "audio_pitch_agreement": 0.83}, config) is not None
+    assert audio_diagnosis({**stats, "audio_pitch_agreement": 0.87}, config) is None

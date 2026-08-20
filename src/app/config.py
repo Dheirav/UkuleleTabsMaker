@@ -123,10 +123,19 @@ class Config:
     # failed, and ten notes can clear a 90% bar by chance.
     audio_min_attacks: int = 20
     audio_min_matched_share: float = 0.75
-    # Measured across five videos whose timing is known independently: the four
-    # that align well agree on pitch 95% to 98% of the time, the one that does
-    # not agrees 88%, and a video whose tab is misread agrees 70%.
-    audio_min_pitch_agreement: float = 0.90
+    # Calibrated rather than guessed. Twenty-two videos carrying both a highlight
+    # and playthrough audio give the soundtrack's times something to be scored
+    # against; sliced into chunks the size this gate judges, they yield 527
+    # readings across the whole range of agreement instead of one apiece. The
+    # error breaks tenfold between the bands either side of 85% -- 218ms below
+    # against 22ms above, over 15 and 24 chunks -- and stays flat from there to
+    # 100%. An earlier 0.90 was a guess that happened to land on the safe side.
+    #
+    # The backing-track video is left out of that calibration deliberately: its
+    # audio is the same song, so it carries the right pitches at the wrong times
+    # and scores above 90% while timing 209ms out. Pitch cannot see that fault
+    # and is not what catches it; audio_min_matched_share is.
+    audio_min_pitch_agreement: float = 0.85
 
     # --- tab drawn over a live video ---
     # Two thirds of tab videos on YouTube lay a tab band over a shot of someone
