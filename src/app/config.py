@@ -166,6 +166,12 @@ class Config:
     # How far beyond the outermost string line a fret number may sit. Digits are
     # written on the lines, so this only has to cover the tallest of them.
     glyph_staff_margin_ratio: float = 1.0
+    # A bar line runs the staff's full height in one column. Measured against
+    # the staff rather than the composite, because the composite also holds a
+    # notation staff and a slab of video.
+    bar_line_coverage: float = 0.9
+    bar_line_merge_px: int = 4
+    bar_line_edge_margin_ratio: float = 0.02
     highlight_row_ratio: float = 0.25
     highlight_span_tolerance_px: int = 25
     measure_min_duration_s: float = 0.35

@@ -6,6 +6,7 @@ import numpy as np
 
 from src.app.config import Config
 from src.models.schema import DigitDetection
+from src.vision.paged import notation_ink
 
 
 def find_string_lines(gray: np.ndarray, config: Config) -> List[int]:
@@ -142,6 +143,41 @@ def _group_multidigit(components, gap: int):
 def read_page(composite: np.ndarray, classifier, config: Config) -> List[DigitDetection]:
     """The frets on a page. See read_page_detail for what it declined."""
     return read_page_detail(composite, classifier, config)[0]
+
+
+def find_bar_lines(composite: np.ndarray, lines: List[int], config: Config) -> List[int]:
+    """x of every bar line drawn across the tab staff.
+
+    A bar line is the one thing that runs the staff from its top line to its
+    bottom one in a single column, so that is what is asked for directly. Asking
+    instead for a tall vertical anywhere near the staff catches the rhythm stems
+    these pages hang below the tab: a stem is easily as tall as a bar line and
+    clips the bottom line on its way down, and one video gained 36 bars of under
+    half a second that way.
+
+    Keyed on neutral ink rather than on darkness, because one of these players
+    steps a saturated orange marker through the music and it is exactly as tall
+    and exactly as vertical as the bar line it sits beside.
+    """
+    if len(lines) < 2:
+        return []
+    ink = notation_ink(composite, config) > 0
+    band = ink[lines[0]:lines[-1] + 1, :]
+    columns = np.where(band.mean(axis=0) >= config.bar_line_coverage)[0]
+    if len(columns) == 0:
+        return []
+    groups: List[List[int]] = [[int(columns[0])]]
+    for column in columns[1:]:
+        if column - groups[-1][-1] <= config.bar_line_merge_px:
+            groups[-1].append(int(column))
+        else:
+            groups.append([int(column)])
+    # The staff is closed off at both ends by a rule of its own. That is the edge
+    # of the system rather than a bar within it, and the page already begins
+    # where it begins.
+    margin = composite.shape[1] * config.bar_line_edge_margin_ratio
+    return [int(np.mean(g)) for g in groups
+            if margin <= np.mean(g) <= composite.shape[1] - margin]
 
 
 def _on_the_staff(components, lines: List[int], config: Config):

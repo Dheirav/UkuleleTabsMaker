@@ -10,12 +10,15 @@ is a hard anchor: what is drawn on a page is played while that page is up. That
 keeps a run of wrong matches from dragging the rest of the song out of step,
 which is the failure that would otherwise make this useless over several minutes.
 """
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import cv2
 import numpy as np
 
 from src.app.config import Config
 from src.audio.onsets import note_midi
+from src.parsing.paged_tab import _cluster
+from src.vision.page_digits import find_bar_lines, find_string_lines
 
 Onset = Tuple[float, Optional[int]]
 
@@ -45,8 +48,8 @@ def _match_score(attack: Sequence, onset: Onset, config: Config) -> float:
     pitch = onset[1]
     if pitch is None:
         return 0.0
-    wanted = {note_midi(d.string_index, d.value) for d in attack}
-    wanted.discard(None)
+    wanted = {midi for midi in (note_midi(d.string_index, d.value) for d in attack)
+              if midi is not None}
     if not wanted:
         return 0.0
     if pitch in wanted:
@@ -120,7 +123,7 @@ def fill_gaps(attacks: List[List], times: Dict[int, float],
 
 
 def time_page(digits: Sequence, onsets: List[Onset], t0: float, t1: float,
-              page_width: float, config: Config) -> List[Tuple[object, float]]:
+              page_width: float, config: Config) -> List[Tuple[Any, float]]:
     """Every note on one page, paired with the moment it sounds."""
     attacks = group_attacks(digits, page_width, config)
     if not attacks:
@@ -129,11 +132,31 @@ def time_page(digits: Sequence, onsets: List[Onset], t0: float, t1: float,
     inside = [o for o in onsets if t0 - margin <= o[0] <= t1 + margin]
     times = align(attacks, inside, config)
     filled = fill_gaps(attacks, times, t0, t1)
-    out: List[Tuple[object, float]] = []
+    out: List[Tuple[Any, float]] = []
     for group, time in zip(attacks, filled):
         for digit in group:
             out.append((digit, float(max(time, 0.0))))
     return out
+
+
+def bar_times_from_x(bar_xs: Sequence, placed: Sequence[Tuple[Any, float]],
+                     t0: float, t1: float) -> List[float]:
+    """When the music reached each bar line, from where the notes around it fell.
+
+    A bar line has no sound of its own, so it is dated by the notes either side
+    of it -- the same notes the soundtrack has already timed. Past the outermost
+    note the bar line is pinned to the page's own bounds rather than
+    extrapolated, because a system's closing bar sits beyond every note in it and
+    a speed estimated from two notes would throw it a long way out.
+    """
+    if not bar_xs or not placed:
+        return []
+    xs = [float(d.x_center) for d, _ in placed]
+    ts = [float(t) for _, t in placed]
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    xs = [xs[i] for i in order]
+    ts = [ts[i] for i in order]
+    return [float(np.interp(float(x), xs, ts, left=t0, right=t1)) for x in bar_xs]
 
 
 def notes_from_audio(pages, video_path: str, config: Config):
@@ -149,6 +172,7 @@ def notes_from_audio(pages, video_path: str, config: Config):
 
     detected = audio_onsets.detect(video_path, config)
     notes: List[Note] = []
+    bars: List[float] = []
     matched = attacks_total = agreed = 0
     for page in pages:
         if not page.digits or page.composite is None:
@@ -164,8 +188,9 @@ def notes_from_audio(pages, video_path: str, config: Config):
         for index, when in placed.items():
             if _match_score(groups[index], by_time[when], config) >= config.audio_pitch_bonus:
                 agreed += 1
-        for digit, time in time_page(page.digits, detected, page.t0, page.t1,
-                                     width, config):
+        placed_notes = time_page(page.digits, detected, page.t0, page.t1,
+                                 width, config)
+        for digit, time in placed_notes:
             notes.append(Note(
                 time=float(time),
                 string_index=digit.string_index,
@@ -173,10 +198,19 @@ def notes_from_audio(pages, video_path: str, config: Config):
                 confidence=digit.confidence,
                 x=float(digit.x_center),
             ))
+        # The page turn is itself a bar line: a system begins a new bar.
+        bars.append(float(page.t0))
+        staff = find_string_lines(cv2.cvtColor(page.composite, cv2.COLOR_BGR2GRAY),
+                                  config)
+        bars.extend(bar_times_from_x(
+            find_bar_lines(page.composite, staff, config),
+            placed_notes, page.t0, page.t1))
     notes.sort(key=lambda n: (n.time, n.string_index))
     share = matched / attacks_total if attacks_total else 0.0
     agreement = agreed / matched if matched else 0.0
-    result = ReconstructionResult(notes=notes, bar_times=[], speed_px_per_s=None)
+    bar_times = _cluster(sorted(bars), config.bar_time_cluster_tolerance_s)
+    result = ReconstructionResult(notes=notes, bar_times=bar_times,
+                                  speed_px_per_s=None)
     return result, {"audio_onsets": float(len(detected)),
                     "audio_attacks": float(attacks_total),
                     "audio_matched_share": float(share),
