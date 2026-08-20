@@ -139,14 +139,16 @@ def test_an_unplaced_note_is_still_given_a_time():
 
 def test_a_video_with_no_audio_is_refused():
     config = Config()
-    assert audio_diagnosis({"audio_onsets": 0.0}, config) is not None
+    reason = audio_diagnosis({"audio_onsets": 0.0, "audio_attacks": 90.0}, config)
+    assert reason is not None and "no notes could be heard" in reason
 
 
 def test_a_backing_track_is_refused():
     """Where the soundtrack is the original recording the onsets are drums and
     voice, and few of the page's notes find one at all."""
     config = Config()
-    reason = audio_diagnosis({"audio_onsets": 400.0, "audio_matched_share": 0.63,
+    reason = audio_diagnosis({"audio_onsets": 400.0, "audio_attacks": 724.0,
+                              "audio_matched_share": 0.63,
                               "audio_pitch_agreement": 0.88}, config)
     assert reason is not None and "does not play what the tab shows" in reason
 
@@ -156,12 +158,54 @@ def test_matching_everything_at_the_wrong_pitch_is_refused():
     every note finds *a* sound whether or not it is the right one. One video
     matched 100% of its notes while agreeing with 70% of them on pitch."""
     config = Config()
-    reason = audio_diagnosis({"audio_onsets": 323.0, "audio_matched_share": 1.0,
+    reason = audio_diagnosis({"audio_onsets": 323.0, "audio_attacks": 90.0,
+                              "audio_matched_share": 1.0,
                               "audio_pitch_agreement": 0.70}, config)
     assert reason is not None and "not the notes on the page" in reason
 
 
 def test_a_video_the_soundtrack_can_time_is_allowed_through():
     config = Config()
-    assert audio_diagnosis({"audio_onsets": 100.0, "audio_matched_share": 0.95,
+    assert audio_diagnosis({"audio_onsets": 100.0, "audio_attacks": 100.0,
+                            "audio_matched_share": 0.95,
                             "audio_pitch_agreement": 0.96}, config) is None
+
+
+def test_a_missing_decoder_does_not_end_the_run(monkeypatch):
+    """This route is reached only after the highlight has been ruled out. A
+    machine without ffmpeg should be told the video cannot be timed — which is
+    true, and which the caller already knows how to say — not handed a
+    traceback."""
+    import subprocess
+    from src.audio.onsets import load_audio
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "ffmpeg")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+    assert len(load_audio("anything.mp4", Config())) == 0
+
+
+def test_a_video_whose_audio_will_not_decode_is_refused_in_words(monkeypatch):
+    import subprocess
+    from src.audio.onsets import detect
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "ffmpeg")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+    config = Config()
+    assert detect("anything.mp4", config) == []
+    reason = audio_diagnosis({"audio_onsets": 0.0, "audio_attacks": 90.0}, config)
+    assert reason is not None and "soundtrack" in reason
+
+
+def test_a_run_that_read_almost_nothing_is_refused():
+    """Agreement is a ratio and a ratio over a handful of notes is noise. A run
+    that read ten notes out of a whole song had already failed at recognition,
+    and nine of those ten agreeing on pitch cleared a 90% bar by chance."""
+    config = Config()
+    reason = audio_diagnosis({"audio_onsets": 323.0, "audio_attacks": 10.0,
+                              "audio_matched_share": 1.0,
+                              "audio_pitch_agreement": 0.9}, config)
+    assert reason is not None and "too little of the tab was read" in reason

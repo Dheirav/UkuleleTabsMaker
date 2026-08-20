@@ -118,6 +118,10 @@ class Config:
     # Where the audio route may be used at all, and when it must give up.
     use_audio_timing: bool = True
     audio_min_onsets: int = 8
+    # Agreement is a ratio, and a ratio over a handful of notes is noise. The
+    # videos of this kind read 90, 121 and 446 notes; ten means recognition
+    # failed, and ten notes can clear a 90% bar by chance.
+    audio_min_attacks: int = 20
     audio_min_matched_share: float = 0.75
     # Measured across five videos whose timing is known independently: the four
     # that align well agree on pitch 95% to 98% of the time, the one that does

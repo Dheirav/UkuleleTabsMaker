@@ -31,11 +31,21 @@ OPEN_STRING_MIDI = (69, 64, 60, 67)
 
 
 def load_audio(video_path: str, config: Config) -> np.ndarray:
-    """Mono PCM, decoded by the ffmpeg the project already requires."""
-    proc = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", video_path, "-f", "s16le", "-ac", "1",
-         "-ar", str(config.audio_sample_rate), "-"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    """Mono PCM, decoded by the ffmpeg the project already requires.
+
+    Silence rather than an exception when there is nothing to decode, including
+    when ffmpeg is not installed at all. This route is reached only after the
+    highlight has already been ruled out, and a missing decoder should leave the
+    reader saying it cannot time the video -- which is true, and which the caller
+    already knows how to say -- rather than ending the run with a traceback.
+    """
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", video_path, "-f", "s16le", "-ac", "1",
+             "-ar", str(config.audio_sample_rate), "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError:
+        return np.zeros(0, dtype=np.float32)
     if proc.returncode != 0 or not proc.stdout:
         return np.zeros(0, dtype=np.float32)
     return np.frombuffer(proc.stdout, dtype="<i2").astype(np.float32) / 32768.0

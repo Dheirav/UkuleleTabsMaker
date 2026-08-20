@@ -226,6 +226,14 @@ def audio_diagnosis(stats: Dict[str, float], config: Config) -> Optional[str]:
     drums, voice, a full band -- the onsets are not the tab's notes and matching
     falls to 63%, with the notes it does place landing a third of a second out.
     """
+    # Both figures below are ratios, and a ratio over a handful of notes says
+    # nothing. A run that read ten notes out of a whole song has already failed
+    # at recognition, and nine of those ten agreeing on pitch is not evidence.
+    if stats.get("audio_attacks", 0) < config.audio_min_attacks:
+        return (f"too little of the tab was read to time it — "
+                f"{int(stats.get('audio_attacks', 0))} notes off the whole video, "
+                f"where a song runs to hundreds. Whatever went wrong went wrong "
+                f"before the soundtrack was consulted.")
     if stats.get("audio_onsets", 0) < config.audio_min_onsets:
         return ("no notes could be heard in the soundtrack — this reader falls back "
                 "to timing a tab by the sound of it being played when the video "
