@@ -215,10 +215,17 @@ def run_paged_pipeline(
             "font": os.path.basename(classifier.font_path or "none"),
         },
     )
-    coverage = measure_coverage(pages)
-    logger.info("coverage: %d/%d highlighted measures produced notes (%.1f%%)",
-                int(coverage["measures_with_notes"]), int(coverage["measures_highlighted"]),
-                100.0 * coverage["coverage"])
+    # Coverage counts highlighted measures that produced notes, so it means
+    # nothing on a video timed by its soundtrack -- there are no highlighted
+    # measures to count. Reporting it anyway wrote `coverage: 0.0` into the
+    # sampling report, which reads as "none of the music was captured" rather
+    # than "this is not the question here".
+    coverage = {} if use_audio else measure_coverage(pages)
+    if coverage:
+        logger.info("coverage: %d/%d highlighted measures produced notes (%.1f%%)",
+                    int(coverage["measures_with_notes"]),
+                    int(coverage["measures_highlighted"]),
+                    100.0 * coverage["coverage"])
     progress.note(f"{len(reconstruction.notes)} notes in {len(measures)} measures")
     stats = {
         "mode": "paged",
@@ -226,7 +233,8 @@ def run_paged_pipeline(
         "frames": float(scan_data["n"]),
         "fps": float(scan_data["fps"]),
         "playhead_frames": float(sum(1 for h in scan_data["heads"] if h >= 0)),
-        "measures_tracked": float(sum(len(p.measures) for p in pages)),
+        **({} if use_audio else
+           {"measures_tracked": float(sum(len(p.measures) for p in pages))}),
         "glyph_font_fit": float(classifier.fit),
         **audio_stats,
         # Worst page ghosting seen. High means a page boundary landed mid-turn.
