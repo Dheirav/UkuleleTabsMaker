@@ -63,7 +63,18 @@ def _holes(binary: np.ndarray) -> int:
     Counted on the glyph's own mask, so a neighbouring digit cannot close a gap
     that is really open. Specks are ignored: a thick stroke leaves ragged pixels
     against the edge of a counter, and each of those would otherwise be a hole.
+
+    Measured against the ink rather than against the image it arrived in. A
+    reference glyph is drawn on a roomy canvas and a detected one is cropped to
+    its own bounds, so a threshold taken from the image area means two different
+    things -- and at the bold weights, where the counters are smallest, it read
+    the reference 8 as having one hole and then charged every real 8 for the
+    difference.
     """
+    ys, xs = np.where(binary > 0)
+    if len(xs) == 0:
+        return 0
+    binary = binary[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     padded = cv2.copyMakeBorder(binary, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
     background = (padded == 0).astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(background, 4)

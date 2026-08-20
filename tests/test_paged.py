@@ -5,8 +5,8 @@ import pytest
 from src.app.config import Config
 from src.models.schema import DigitDetection
 from src.parsing.paged_tab import notes_from_pages
-from src.vision.glyphs import (GlyphClassifier, _holes, _match, build_font_templates,
-                               normalize_glyph)
+from src.vision.glyphs import (CANDIDATE_FONTS, GlyphClassifier, _holes, _match,
+                               build_font_templates, normalize_glyph)
 from src.vision.paged import (MeasureSpan, Page, highlight_mask, page_signature,
                               segment_pages, signature_distance)
 from src.vision.page_digits import (_on_the_staff, find_string_lines, glyph_components,
@@ -673,14 +673,33 @@ def test_a_bold_three_is_not_read_as_an_eight():
     assert _match(binary, templates)[0] == 3
 
 
+HOLES = {0: 1, 1: 0, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 0, 8: 2, 9: 1}
+
+
 @requires_font
-def test_holes_are_counted_as_the_digit_has_them():
-    """None for 1 2 3 5 7, one for 0 4 6 9, two for 8."""
+@pytest.mark.parametrize("font", [f for f in CANDIDATE_FONTS
+                                  if build_font_templates(f) is not None])
+def test_holes_are_counted_as_the_digit_has_them(font):
+    """None for 1 2 3 5 7, one for 0 4 6 9, two for 8 -- in every face on the
+    candidate list, not only the one the fixtures happen to use. At the bold
+    weights the counters are smallest, and a threshold taken from the image area
+    rather than from the ink read the reference 8 as having one hole, then
+    charged every real 8 for the difference and declined it."""
+    assert {digit: holes for _, digit, _, holes in build_font_templates(font)} == HOLES
+
+
+@requires_font
+def test_holes_do_not_depend_on_the_canvas_the_glyph_arrived_on():
+    """A reference glyph is drawn on a roomy canvas and a detected one is cropped
+    to its own bounds. The count must not depend on which."""
     from PIL import Image, ImageDraw, ImageFont
-    expected = {0: 1, 1: 0, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 0, 8: 2, 9: 1}
-    for digit, holes in expected.items():
+    for digit, holes in HOLES.items():
         img = Image.new("L", (96, 128), 0)
         ImageDraw.Draw(img).text((24, 24), str(digit),
                                  fill=255, font=ImageFont.truetype(FIXTURE_FONT, 64))
-        binary = (np.array(img) > 96).astype(np.uint8) * 255
-        assert _holes(binary) == holes, digit
+        roomy = (np.array(img) > 96).astype(np.uint8) * 255
+        ys, xs = np.where(roomy > 0)
+        cropped = roomy[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        assert _holes(roomy) == holes, digit
+        assert _holes(cropped) == holes, digit
+
