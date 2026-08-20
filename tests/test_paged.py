@@ -5,7 +5,8 @@ import pytest
 from src.app.config import Config
 from src.models.schema import DigitDetection
 from src.parsing.paged_tab import notes_from_pages
-from src.vision.glyphs import GlyphClassifier, build_font_templates, normalize_glyph
+from src.vision.glyphs import (GlyphClassifier, _holes, _match, build_font_templates,
+                               normalize_glyph)
 from src.vision.paged import (MeasureSpan, Page, highlight_mask, page_signature,
                               segment_pages, signature_distance)
 from src.vision.page_digits import (_on_the_staff, find_string_lines, glyph_components,
@@ -653,3 +654,33 @@ def test_a_fret_number_just_off_the_staff_is_kept():
     lines = [262, 289, 315, 341]
     just_above = (100, 262 - 12, 14, 20, None)
     assert _on_the_staff([just_above], lines, config) == [just_above]
+
+
+@requires_font
+def test_a_bold_three_is_not_read_as_an_eight():
+    """Overlap alone cannot separate them: a 3 is very nearly an 8 with the left
+    of each bowl removed, so it sits inside the 8 template and scores well
+    against it — and the heavier the stroke, the closer the two get. One video
+    read 20 of its 80 glyphs as the eighth fret out of a beginner arrangement
+    that has none. Holes are what actually differ."""
+    from PIL import Image, ImageDraw, ImageFont
+    bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    templates = build_font_templates(FONT)
+    img = Image.new("L", (96, 128), 0)
+    ImageDraw.Draw(img).text((24, 24), "3", fill=255, font=ImageFont.truetype(bold, 64))
+    binary = (np.array(img) > 96).astype(np.uint8) * 255
+    assert _holes(binary) == 0
+    assert _match(binary, templates)[0] == 3
+
+
+@requires_font
+def test_holes_are_counted_as_the_digit_has_them():
+    """None for 1 2 3 5 7, one for 0 4 6 9, two for 8."""
+    from PIL import Image, ImageDraw, ImageFont
+    expected = {0: 1, 1: 0, 2: 0, 3: 0, 4: 1, 5: 0, 6: 1, 7: 0, 8: 2, 9: 1}
+    for digit, holes in expected.items():
+        img = Image.new("L", (96, 128), 0)
+        ImageDraw.Draw(img).text((24, 24), str(digit),
+                                 fill=255, font=ImageFont.truetype(FIXTURE_FONT, 64))
+        binary = (np.array(img) > 96).astype(np.uint8) * 255
+        assert _holes(binary) == holes, digit
