@@ -6,10 +6,14 @@ It reads the notation off the screen — this is computer vision, not audio
 transcription — and recovers each note's fret, string and time from what the
 player itself shows.
 
-Measured against hand-checked ground truth on three clips (340 notes): **99.7%
-recall, 100% precision** — 339 notes recovered exactly, one missed, none
+Measured against hand-checked ground truth on four clips (316 notes): **98.7%
+recall, 100% precision** — 312 notes recovered exactly, four missed, none
 invented. Both the ground truth and the detections it is scored against are in
 `benchmark/`, so the figure can be checked without re-running the pipeline.
+
+One video is deliberately scored once rather than twice: it carries two
+independent labellings, and counting both made 42% of the benchmark's notes a
+single clip. See `duplicate_of` in `benchmark/clips.json`.
 
 ## Features
 - YouTube ingestion via yt-dlp, ranking formats by resolution then bitrate

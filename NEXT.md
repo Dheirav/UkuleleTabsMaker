@@ -93,12 +93,15 @@ mistake cost a whole investigation this week.
 | audio pitch agreement | fret numbers against the pitches heard | recognition on videos with **no truth at all** |
 | bar-duration spread | how even the bars are, IQR over median | note *times* on those same videos |
 
-Current numbers, five labelled clips:
+Current numbers, four labelled clips (316 notes):
 
-    recognised on the composite     98.94% recall / 100% precision
-    reached the sheet at all        98.42%
-    printed in the right bar        91.82% recall / 92.31% precision
+    recognised on the composite     98.73% recall / 100% precision
+    reached the sheet at all        99.05%
+    printed in the right bar        93.04% recall / 92.16% precision
     onsets within 50ms              81%
+
+These rose about a point when the benchmark stopped scoring one video twice.
+Nothing was read differently; see *A benchmark that counted a video twice*.
 
 **`score` cannot see whether a note reaches the sheet.** Two fixes were judged
 by it and misjudged: one reverted that should have shipped, one that looked
@@ -240,6 +243,28 @@ down now falls through to the audio route rather than stopping there, and
 `audio_timing.audio_diagnosis` refuses in turn if the soundtrack cannot account
 for the page. Passing either promises only that something was found to time
 against — never accuracy.
+
+---
+
+## A benchmark that counted a video twice
+
+`benchmark/videos/reference_clip.mp4` and `outputs/In The Poo/video.mp4` are the
+same file, byte for byte, and both were registered as clips with their own
+verified truth. Between them they were 161 of the benchmark's 379 notes -- 42% of
+the headline, one video, its failures weighted double.
+
+The two labellings do not agree with each other, which is the useful part: 18
+measures and 98 notes against 10 and 63, over overlapping spans of the same
+footage, scoring 89.8% against 85.7% recall. A second opinion on one video is
+worth keeping; counting it as a second video is not.
+
+The duplicate now carries `duplicate_of` in `clips.json` and every harness skips
+it unless asked for by name, so the labelling survives and can still be scored
+on its own. De-duplicating moved the headline about a point in each figure
+without a single note being read differently.
+
+**Check `md5sum` before adding a clip.** Videos arrive here twice, under the
+title the tool gave them and under whatever they were called when downloaded.
 
 ---
 

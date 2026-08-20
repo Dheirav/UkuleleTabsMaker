@@ -84,7 +84,9 @@
     "title": "Chainsaw Man - In The Pool (Ukulele Tabs Tutorial EASY) The Movie: Reze Arc",
     "local": true,
     "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/In The Poo/video.mp4",
-    "source": "user download"
+    "source": "user download",
+    "duplicate_of": "reference_clip",
+    "note": "byte-identical to reference_clip.mp4 (md5 dc21dbe2c4be). Its truth is a second, independent labelling of the same footage and is kept for that -- the two disagree, 89.8% against 85.7% recall -- but scoring both counted one video twice, 42% of the benchmark's notes."
   },
   {
     "id": "chainsaw_man_op_kenshi_yonezu_kick_back_",
@@ -102,7 +104,7 @@
   },
   {
     "id": "oshi_no_ko_opening_full_idol_by_yoasobi_",
-    "title": "Oshi no Ko - Opening FULL Idol (アイドル) by YOASOBI (Easy Ukulele Tabs Tutorial)",
+    "title": "Oshi no Ko - Opening FULL Idol (\u30a2\u30a4\u30c9\u30eb) by YOASOBI (Easy Ukulele Tabs Tutorial)",
     "local": true,
     "path": "/home/dheirav/Code/UkuleleTabsMaker/outputs/Oshi no Ko - Opening FULL Ido/video.mp4",
     "source": "user download"

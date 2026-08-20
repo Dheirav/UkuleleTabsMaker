@@ -61,6 +61,10 @@ def load_clips(argv: List[str]) -> List[dict]:
     for clip in clips:
         if wanted and clip["id"] not in wanted:
             continue
+        # Same footage as another clip under a second labelling. Scoring both
+        # counts one video twice.
+        if clip.get("duplicate_of") and not wanted:
+            continue
         path = os.path.join(VIDEOS, f"{clip['id']}.mp4")
         if not os.path.exists(path):
             print(f"  skip {clip['id']} (not downloaded)")

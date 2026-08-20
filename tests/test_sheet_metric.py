@@ -59,3 +59,19 @@ def test_a_note_outside_every_bar_is_ignored():
 def test_notes_keep_their_order_within_a_bar():
     notes = [_Note(0.8, 0, 2), _Note(0.2, 3, 1), _Note(0.5, 1, 0)]
     assert notes_by_measure(notes, MEASURES)[0] == [(3, 1), (1, 0), (0, 2)]
+
+
+def test_a_duplicate_clip_is_not_scored_twice():
+    """One video arrived in the benchmark twice, under two ids with two verified
+    labellings, and was 42% of the headline on its own. The labelling is kept --
+    a second opinion is worth having -- but it is not a second video."""
+    from measure_truth import load_clips
+    ids = [c["id"] for c in load_clips([])]
+    assert "reference_clip" in ids
+    assert "chainsaw_man_in_the_pool_ukulele_tabs_tu" not in ids
+
+
+def test_a_duplicate_clip_can_still_be_scored_by_name():
+    from measure_truth import load_clips
+    ids = [c["id"] for c in load_clips(["chainsaw_man_in_the_pool_ukulele_tabs_tu"])]
+    assert ids == ["chainsaw_man_in_the_pool_ukulele_tabs_tu"]

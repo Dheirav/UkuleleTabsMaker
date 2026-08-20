@@ -55,6 +55,10 @@ def load_clips(argv: List[str]) -> List[dict]:
     for clip in clips:
         if wanted and clip["id"] not in wanted:
             continue
+        # Same footage as another clip under a second labelling. Scoring both
+        # counts one video twice.
+        if clip.get("duplicate_of") and not wanted:
+            continue
         # A clip may carry its own path: songs the user ran through the tool
         # live under outputs/, and are worth scoring without being copied.
         path = clip.get("path") or os.path.join(VIDEOS, f"{clip['id']}.mp4")

@@ -43,11 +43,21 @@ CROPS = os.path.join(BENCH, "measure_crops")
 
 
 def load_clips(argv: List[str]) -> List[dict]:
+    """The clips to score, one entry per distinct video.
+
+    A clip marked `duplicate_of` is the same footage as another under a second
+    labelling, and is skipped unless asked for by name. Scoring both counts one
+    video twice -- and did: reference_clip and the chainsaw_man entry are the
+    same file, 42% of the benchmark's notes between them, their two truths
+    disagreeing with each other by four points of recall.
+    """
     clips = json.load(open(CLIPS))
     wanted = set(argv) if argv else None
     out = []
     for clip in clips:
         if wanted and clip["id"] not in wanted:
+            continue
+        if clip.get("duplicate_of") and not wanted:
             continue
         # A clip may carry its own path: songs the user ran through the tool
         # live under outputs/, and are worth scoring without being copied.
