@@ -2,8 +2,10 @@
 
 Last updated 2026-08-20. `main`, 199 tests pass, 9 commits ahead of `origin/main`.
 
-The audio timing route is merged. No video passes its gate yet, and the reason is
-recognition, not timing.
+The audio timing route is merged and **one video now passes its gate**:
+`ho_cheats_wonderful` prints 446 notes in 42 measures, timed entirely by its
+soundtrack. The other two are refused, and the threshold that refuses them is
+now calibrated rather than guessed.
 
 ---
 
@@ -11,36 +13,34 @@ recognition, not timing.
 
 ### A. Recognition on notation+TAB pages — recommended
 
-The last thing between the reader and the two thirds of tab videos it cannot
-touch. Everything else on that path now works: the tab band is found under an
-overlay, the tab staff is read rather than the notation above it, the soundtrack
-supplies times, and the page supplies bar lines.
+What stands between the reader and the rest of the tab videos it cannot touch.
+Everything else on that path works: the tab band is found under an overlay, the
+tab staff is read rather than the notation above it, the soundtrack supplies
+times, the page supplies bar lines, and one video comes out the far end.
 
-A tab drawn over a playthrough is timed by its soundtrack (see *How the audio
-route works*), and the route refuses when the notes it times do not sound at the
-pitch the tab says. The three overlay videos to hand agree 82%, 73% and 86%
-against a threshold of 90%, so all three are refused.
+The gate refuses when the notes it times do not sound at the pitch the tab says.
+Where the three overlay videos stand against a bar of 85%:
 
-**Success is measurable without hand-labelling anything.** Pitch agreement is
-reported by the audio route and needs no truth: the soundtrack is an independent
-witness to what the fret numbers say. Raise agreement on `ho_easytabs_perfect`,
-`ho_ukealong_greensleeves` or `ho_cheats_wonderful` above 90% and that video
-starts producing sheets. Iterate off cached page composites rather than
-re-scanning -- a scan is a minute a video and the composites do not change.
+| video | overall | chunks below 85% | quartiles | outcome |
+|---|---|---|---|---|
+| `ho_cheats_wonderful` | 86% | 4 of 11 | 73 / 95 / 100 | **prints** |
+| `ho_easytabs_perfect` | 82% | 1 of 4 | 79 / 85 / 86 | refused |
+| `ho_ukealong_greensleeves` | 73% | 3 of 3 | 72 / 75 / 78 | refused |
 
-Where the remaining disagreement actually is, measured rather than assumed: only
-7%, 6% and 1% of it is unexplained. The rest is the instrument still ringing --
-the pitch heard at an attack is a note the page shows within one attack either
-side. So recognition is already 93% to 99% consistent with the audio, and the
-gap to 90% exact agreement may not be closable by reading the page better.
+Two of those are within reach; greensleeves is not close. **Success needs no
+hand-labelling** -- pitch agreement is reported in `sampling_report.json` and the
+soundtrack is an independent witness to what the fret numbers claim. Iterate off
+cached page composites rather than re-scanning; a scan is a minute a video and
+the composites do not change.
 
-**That makes the threshold itself the open question, and it is a judgement, not
-a measurement.** Scoring agreement over a +-1 window instead would pass all
-three. It was not done, for two reasons worth knowing before revisiting it:
-against a null model a random pitch counts as explained 19% to 30% of the time
-at +-1 (26% to 44% at +-3), and chance-corrected the three sit at 0.88 to 0.94 --
-straddling Snowman at 0.91, a video known to time badly. On pitch evidence alone
-these three cannot be told from one that fails. See *Judging the audio route*.
+Know where the remaining disagreement is before chasing it. Only 7%, 6% and 1%
+of it is unexplained: the rest is the instrument still ringing, the pitch heard
+at an attack being a note the page shows an attack or two either side. So
+recognition is already 93% to 99% consistent with the audio, and the last few
+points may not be reachable by reading the page better at all. Note also that
+cheats is bimodal rather than uniformly mediocre -- a median chunk of 95% with a
+bad third -- so the number to move may be a few bad pages rather than the whole
+video.
 
 ### A2. A second witness for timing, free
 
@@ -171,32 +171,50 @@ unproven. First video through the gate, read the sheet before believing it.
 
 ## Judging the audio route
 
-Neither harness reaches it: `measure_truth` scores glyphs and notes against
-hand-labelled truth, and the videos this route serves have none. Two figures
-stand in, and both are computable on a video nobody has labelled.
+Neither harness reaches it: `measure_truth` scores against hand-labelled truth,
+and the videos this route serves have none. Two figures stand in, both
+computable on a video nobody has labelled, both in `sampling_report.json`.
 
 **Pitch agreement** — the fraction of timed notes sounding at the pitch the tab
-claims. Reported in `sampling_report.json` as `audio_pitch_agreement`.
+claims. **Bar-duration spread** — interquartile range over median; a steady
+tempo gives near-equal bars, so an irregular spread witnesses bad note times
+even where the bar lines themselves are demonstrably right.
 
-**Bar-duration spread** — interquartile range over median. A steady tempo gives
-near-equal bars, so an irregular spread witnesses bad note times even where the
-bar lines themselves are demonstrably right.
+### What pitch agreement is worth, measured
 
-Before loosening the pitch threshold, know what was already measured. Counting a
-pitch as agreeing when it matches any note within one attack either side -- which
-is fair, since a ukulele rings for seconds -- would pass all three overlay
-videos. Against that stands a null model: draw a pitch at random from the
-instrument's range and it counts as explained anyway, 19% to 30% of the time at
-+-1 and 26% to 44% at +-3, because a chord-dense page shows most of the scale
-nearby. Chance-corrected, the three overlay videos score 0.88 to 0.94 and
-Snowman -- which times badly, at 321ms jitter -- scores 0.91, sitting among them.
+The threshold was a guess until it was calibrated. Twenty-two videos carry both
+a highlight and playthrough audio, so the soundtrack's times have something to
+be scored against; sliced into chunks the size the gate judges, they give 527
+readings across the whole range instead of one apiece:
 
-So on pitch evidence alone a video that times well cannot be told from one that
-does not, and the strict threshold is what stands between the route and a
-confident wrong sheet. It is a judgement about which error costs more, and the
-project's answer elsewhere has been that a false accept is worse than a refusal.
-A hand-labelled no-marker clip would replace the judgement with a measurement,
-and is the only thing that would.
+| pitch agreement | chunks | median error |
+|---|---|---|
+| 70–80% | 6 | 210ms |
+| 80–85% | 15 | **218ms** |
+| 85–90% | 24 | **22ms** |
+| 90–95% | 79 | 26ms |
+| 95–100% | 401 | 19ms |
+
+A tenfold break either side of 85%, flat above it. That is where the bar now
+sits. The earlier 0.90 was a guess that happened to land on the safe side.
+
+**Leave the backing-track video out of that calibration.** Snowman's audio is
+the same song, so it carries the right pitches at the wrong times and produces
+chunks above 90% agreement that still time 209ms out. Including it manufactures
+a false cliff at 90% and hides the real one. Pitch cannot see that fault and is
+not what catches it — `audio_min_matched_share` is, at 63% against 89% or better
+elsewhere. The two gates answer different questions and neither is redundant.
+
+Two limits worth carrying. The calibration videos are well-recognised
+screencasts whose low-agreement chunks come from *occasional* failures, while
+the overlay videos are *systematically* harder — possibly the same number
+reached by a different route. And per-chunk is a proxy for the per-video
+judgement the gate actually makes.
+
+To redo it: `calib_collect.py` caches (attacks, reference times, onsets) per
+video and `calibrate.py` slices and buckets them. Both are throwaway scripts;
+the method is what matters, and it is the only thing so far that has turned an
+argument about this number into a measurement.
 
 ---
 
@@ -332,6 +350,9 @@ only string 3. It would reject the cleanest clip in the benchmark.
   the 8 template. One video read 20 of 80 glyphs as the eighth fret.
 - **Timing from the soundtrack**, with its refusal gates.
 - **Bar lines**, so a soundtrack-timed sheet is divided into measures.
+- **The benchmark stopped scoring one video twice**, which moved every figure
+  about a point without a note being read differently.
+- **The pitch threshold is calibrated**, and one video now prints as a result.
 
 ## Verified before merging
 
