@@ -8,7 +8,8 @@ from src.parsing.paged_tab import notes_from_pages
 from src.vision.glyphs import GlyphClassifier, build_font_templates, normalize_glyph
 from src.vision.paged import (MeasureSpan, Page, highlight_mask, page_signature,
                               segment_pages, signature_distance)
-from src.vision.page_digits import find_string_lines, glyph_components, read_page, strip_rules
+from src.vision.page_digits import (_on_the_staff, find_string_lines, glyph_components,
+                                    read_page, read_page_detail, strip_rules)
 
 
 FONT = "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf"
@@ -614,3 +615,41 @@ def test_a_bar_where_nothing_was_found_still_counts_as_lost():
     cov = measure_coverage([_page_with_declined([played, empty], [note], [])])
     assert cov["measures_lost"] == 1
     assert cov["coverage"] == 0.5
+
+
+def test_the_notation_above_the_tab_is_not_read_as_frets():
+    """These pages print standard notation over the tab, and the notation area
+    carries real digits of its own — a bar number, a time signature. Read whole,
+    they all land on string 0, that being the tab line nearest the staff above.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    config = Config()
+    page = Image.new("L", (1200, 400), 245)
+    draw = ImageDraw.Draw(page)
+    for y in (60, 78, 96, 114, 132):          # notation staff
+        draw.line([(0, y), (1199, y)], fill=60)
+    for y in (250, 280, 310, 340):            # tab staff, one line per string
+        draw.line([(0, y), (1199, y)], fill=60)
+    font = ImageFont.truetype(FIXTURE_FONT, 24)
+    draw.text((20, 30), "12", fill=20, font=font)      # the bar number
+    for x, y in ((200, 250), (400, 280), (600, 310)):
+        draw.rectangle([x - 10, y - 14, x + 18, y + 14], fill=245)
+        draw.text((x, y - 13), "3", fill=20, font=font)
+    strip = cv2.cvtColor(np.array(page), cv2.COLOR_GRAY2BGR)
+
+    classifier = GlyphClassifier(
+        [c[4] for c in glyph_components(strip_rules(np.array(page), config), config)])
+    detections, _ = read_page_detail(strip, classifier, config)
+    assert len(detections) == 3, "the three fret numbers should still be read"
+    for detection in detections:
+        y_center = detection.bbox[1] + detection.bbox[3] / 2
+        assert y_center > 200, f"read notation ink at y={y_center} as fret {detection.value}"
+
+
+def test_a_fret_number_just_off_the_staff_is_kept():
+    """Digits are written on the lines, but the tallest sit proud of the outer
+    ones. Cutting to the staff exactly would drop them."""
+    config = Config()
+    lines = [262, 289, 315, 341]
+    just_above = (100, 262 - 12, 14, 20, None)
+    assert _on_the_staff([just_above], lines, config) == [just_above]

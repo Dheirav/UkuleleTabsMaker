@@ -27,6 +27,13 @@ CANDIDATE_FONTS = (
 
 NORM = 32
 ASPECT_PENALTY = 0.35
+# Overlap alone cannot tell a 3 from an 8. A 3 is very nearly an 8 with the left
+# of each bowl removed, so it sits inside the 8 template and scores well against
+# it, and these videos render the digits thickly enough to close the counters up
+# further. Holes are what actually differ, and they are cheap to count: none for
+# 1 2 3 5 7, one for 0 4 6 9, two for 8.
+HOLE_PENALTY = 0.30
+MIN_HOLE_AREA = 0.01
 
 
 def normalize_glyph(binary: np.ndarray) -> Optional[np.ndarray]:
@@ -50,6 +57,22 @@ def normalize_glyph(binary: np.ndarray) -> Optional[np.ndarray]:
     return out / peak if peak else out
 
 
+def _holes(binary: np.ndarray) -> int:
+    """Enclosed background regions, which is what separates 8 from 3 and 0 from 7.
+
+    Counted on the glyph's own mask, so a neighbouring digit cannot close a gap
+    that is really open. Specks are ignored: a thick stroke leaves ragged pixels
+    against the edge of a counter, and each of those would otherwise be a hole.
+    """
+    padded = cv2.copyMakeBorder(binary, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    background = (padded == 0).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(background, 4)
+    outer = labels[0, 0]
+    floor = MIN_HOLE_AREA * float(binary.shape[0] * binary.shape[1])
+    return sum(1 for i in range(1, count)
+               if i != outer and stats[i, cv2.CC_STAT_AREA] >= floor)
+
+
 def _aspect(binary: np.ndarray) -> float:
     ys, xs = np.where(binary > 0)
     return (xs.max() - xs.min() + 1) / float(ys.max() - ys.min() + 1)
@@ -71,7 +94,7 @@ def build_font_templates(path: str) -> Optional[List[Tuple[np.ndarray, int, floa
         norm = normalize_glyph(binary)
         if norm is None:
             return None
-        templates.append((norm, digit, _aspect(binary)))
+        templates.append((norm, digit, _aspect(binary), _holes(binary)))
     return templates
 
 
@@ -80,12 +103,14 @@ def _match(binary: np.ndarray, templates) -> Tuple[Optional[int], float]:
     if norm is None:
         return None, -1.0
     aspect = _aspect(binary)
+    holes = _holes(binary)
     best, best_score = None, -1.0
-    for template, digit, t_aspect in templates:
+    for template, digit, t_aspect, t_holes in templates:
         denom = np.sqrt((norm * norm).sum() * (template * template).sum()) + 1e-9
         overlap = float((norm * template).sum() / denom)
         penalty = min(abs(aspect - t_aspect) / max(t_aspect, 0.05), 1.0)
         score = overlap - ASPECT_PENALTY * penalty
+        score -= HOLE_PENALTY * min(abs(holes - t_holes), 2)
         if score > best_score:
             best_score, best = score, digit
     return best, best_score

@@ -163,6 +163,9 @@ class Config:
     glyph_max_height_ratio: float = 0.8
     glyph_merge_gap_ratio: float = 0.45
     glyph_min_score: float = 0.75
+    # How far beyond the outermost string line a fret number may sit. Digits are
+    # written on the lines, so this only has to cover the tallest of them.
+    glyph_staff_margin_ratio: float = 1.0
     highlight_row_ratio: float = 0.25
     highlight_span_tolerance_px: int = 25
     measure_min_duration_s: float = 0.35

@@ -144,6 +144,26 @@ def read_page(composite: np.ndarray, classifier, config: Config) -> List[DigitDe
     return read_page_detail(composite, classifier, config)[0]
 
 
+def _on_the_staff(components, lines: List[int], config: Config):
+    """Only the ink written on the tab staff.
+
+    A fret number is written on a string line, so it lies within the staff give
+    or take a line's spacing. Everything else on the page is something else:
+    these videos print standard notation above the tab and lyrics below it, and
+    a note head is a blob about the size of a digit. Read whole, one page offered
+    110 glyphs of which most were notation, all of them landing on string 0
+    because that was the tab line nearest the staff above.
+
+    Without lines there is nothing to measure against, so nothing is dropped.
+    """
+    if len(lines) < 2:
+        return components
+    spacing = (lines[-1] - lines[0]) / (len(lines) - 1)
+    margin = spacing * config.glyph_staff_margin_ratio
+    top, bottom = lines[0] - margin, lines[-1] + margin
+    return [c for c in components if top <= c[1] + c[3] / 2.0 <= bottom]
+
+
 def read_page_detail(composite: np.ndarray, classifier, config: Config):
     """(frets, where it declined) — the second is what makes a blank bar legible.
 
@@ -156,6 +176,7 @@ def read_page_detail(composite: np.ndarray, classifier, config: Config):
     gray = cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY)
     lines = find_string_lines(gray, config)
     components = glyph_components(strip_rules(gray, config), config)
+    components = _on_the_staff(components, lines, config)
     if not components:
         return [], []
     median_w = float(np.median([c[2] for c in components]))
