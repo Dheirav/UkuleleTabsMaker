@@ -1,9 +1,9 @@
 # Next session
 
-Last updated 2026-08-19. Branch `audio-timing`, 177 tests pass.
+Last updated 2026-08-20. `main`, 199 tests pass, 9 commits ahead of `origin/main`.
 
-The audio timing route is built and works. No video passes its gate yet, and the
-reason is recognition, not timing.
+The audio timing route is merged. No video passes its gate yet, and the reason is
+recognition, not timing.
 
 ---
 
@@ -11,39 +11,48 @@ reason is recognition, not timing.
 
 ### A. Recognition on notation+TAB pages — recommended
 
-This is the last thing between the reader and the two thirds of tab videos it
-cannot touch. Everything else on that path now works.
+The last thing between the reader and the two thirds of tab videos it cannot
+touch. Everything else on that path now works: the tab band is found under an
+overlay, the tab staff is read rather than the notation above it, the soundtrack
+supplies times, and the page supplies bar lines.
 
 A tab drawn over a playthrough is timed by its soundtrack (see *How the audio
 route works*), and the route refuses when the notes it times do not sound at the
-pitch the tab says. The three overlay videos to hand agree 68%, 70% and 85%
-against a threshold of 90%, so all three are refused. The gate is right to refuse
-them: on one, 28 of 110 glyphs are read as the eighth fret in a beginner
-arrangement that plainly has none.
-
-Font fit on these pages runs 0.55 to 0.68, against a good deal better on the
-screencasts the reader was built against. Likely causes, none yet investigated:
-
-- The composite is a wide thin strip, and the glyphs are small in it.
-- The page carries a notation staff as well as a tab staff, so `strip_rules`
-  has beams, stems and note heads to remove that it never saw before.
-- These renderers use fonts the candidate list may not hold.
+pitch the tab says. The three overlay videos to hand agree 82%, 73% and 86%
+against a threshold of 90%, so all three are refused.
 
 **Success is measurable without hand-labelling anything.** Pitch agreement is
 reported by the audio route and needs no truth: the soundtrack is an independent
-witness to what the fret numbers say. Raise agreement on
-`ho_easytabs_perfect`, `ho_ukealong_greensleeves` and `ho_cheats_wonderful` above
-90% and those videos start producing sheets.
+witness to what the fret numbers say. Raise agreement on `ho_easytabs_perfect`,
+`ho_ukealong_greensleeves` or `ho_cheats_wonderful` above 90% and that video
+starts producing sheets. Iterate off cached page composites rather than
+re-scanning -- a scan is a minute a video and the composites do not change.
 
-### A2. Bar lines for audio-timed sheets
+Where the remaining disagreement actually is, measured rather than assumed: only
+7%, 6% and 1% of it is unexplained. The rest is the instrument still ringing --
+the pitch heard at an attack is a note the page shows within one attack either
+side. So recognition is already 93% to 99% consistent with the audio, and the
+gap to 90% exact agreement may not be closable by reading the page better.
 
-Smaller, and worth doing before any audio-timed sheet is shown to anyone. The
-audio route returns no bar times at all, so a whole song prints as one measure.
-The highlight used to supply them and there is no highlight here.
+**That makes the threshold itself the open question, and it is a judgement, not
+a measurement.** Scoring agreement over a +-1 window instead would pass all
+three. It was not done, for two reasons worth knowing before revisiting it:
+against a null model a random pitch counts as explained 19% to 30% of the time
+at +-1 (26% to 44% at +-3), and chance-corrected the three sit at 0.88 to 0.94 --
+straddling Snowman at 0.91, a video known to time badly. On pitch evidence alone
+these three cannot be told from one that fails. See *Judging the audio route*.
 
-The bar lines are drawn on the page — `strip_rules` already finds verticals in
-order to remove them. Keeping their x positions and turning them into times
-through the same alignment would do it.
+### A2. A second witness for timing, free
+
+Bar durations. A steady tempo gives bars of near-equal length, so the spread of
+bar durations witnesses the note times without any truth: measured as
+interquartile range over median, `ho_cheats_wonderful` sits at 0.16 while the
+other two sit at 0.57 and 0.58. On `ho_easytabs_perfect` the bar lines are found
+cleanly and evenly -- 3 to 4 per system at consistent x -- and the durations
+still run 5.88, 8.54, 1.39, 0.73 before settling to a steady 4s, which is the
+note times being wrong rather than the bar lines.
+
+Two independent no-truth witnesses on the same question is worth more than one.
 
 ### B. Adaptive highlight, take two
 
@@ -82,6 +91,7 @@ mistake cost a whole investigation this week.
 | `timing_truth.py score` | onset accuracy, 36 notes, 2 clips | timing precision only |
 | `benchmark.py score` | page-keyed truth — **not the headline metric** | segmentation diagnosis only |
 | audio pitch agreement | fret numbers against the pitches heard | recognition on videos with **no truth at all** |
+| bar-duration spread | how even the bars are, IQR over median | note *times* on those same videos |
 
 Current numbers, five labelled clips:
 
@@ -117,12 +127,22 @@ usually does not: audio of the very notes the tab shows, played once, in order.
    one page at a time, scoring on pitch and paying for insertions and deletions
    on both sides. The page turn is the anchor that stops a bad run dragging the
    rest of the song out of step.
+4. `page_digits.find_bar_lines` reads the bar lines off the staff -- the columns
+   carrying ink from its top line to its bottom -- and they are dated by the
+   notes either side of them. Without those a whole song parses as one measure.
 
-**Two gates, and the second is the one that matters.** `audio_diagnosis` refuses
-on how much of the tab found a sound, and on how much of it agreed on pitch.
-Matching alone proves very little: where the audio holds three times as many
-onsets as the page holds notes, every note finds *a* sound. One video matched
-100% of its notes while agreeing with 5% of them on pitch.
+**Three gates, and the last is the one that matters.** `audio_diagnosis` refuses
+a run that read too little of the tab to judge, then on how much of the tab found
+a sound, then on how much of it agreed on pitch. Each catches something the
+others do not:
+
+- **Sample size.** Both other figures are ratios. A run that read ten notes out
+  of a whole song reported nine agreeing and passed at exactly the 90% bar.
+- **Matched share.** Catches a soundtrack that is the original recording rather
+  than the instrument: Snowman matched 63% where the good ones match 89% to 98%.
+- **Pitch agreement.** Matching alone proves very little -- where the audio holds
+  three times as many onsets as the page holds notes, every note finds *a* sound.
+  One video matched 100% of its notes while agreeing with 5% of them on pitch.
 
 Measured against timing taken from the highlight, on four videos carrying both:
 
@@ -134,10 +154,46 @@ Measured against timing taken from the highlight, on four videos carrying both:
 | USSEWA | 90% | 95% | 25ms | 68% |
 | Snowman | 63% | 88% | 321ms | 14% |
 
-Snowman is the failure the first gate catches. KICKBACK sits a constant 109ms out
-and still scores well, because the number reported is jitter about the median —
-a constant offset shifts every note equally and the sheet, which spaces notes by
-the gaps between them, cannot show it.
+Snowman is the failure the matched-share gate catches. KICKBACK sits a constant
+109ms out and still scores well, because the number reported is jitter about the
+median — a constant offset shifts every note equally and the sheet, which spaces
+notes by the gaps between them, cannot show it.
+
+**The emitting path has never run end to end on a real video.** Every video to
+hand is refused, so bar lines, alignment and gating are each tested in isolation
+and on cached composites, and "a real video produces a real sheet" is still
+unproven. First video through the gate, read the sheet before believing it.
+
+---
+
+## Judging the audio route
+
+Neither harness reaches it: `measure_truth` scores glyphs and notes against
+hand-labelled truth, and the videos this route serves have none. Two figures
+stand in, and both are computable on a video nobody has labelled.
+
+**Pitch agreement** — the fraction of timed notes sounding at the pitch the tab
+claims. Reported in `sampling_report.json` as `audio_pitch_agreement`.
+
+**Bar-duration spread** — interquartile range over median. A steady tempo gives
+near-equal bars, so an irregular spread witnesses bad note times even where the
+bar lines themselves are demonstrably right.
+
+Before loosening the pitch threshold, know what was already measured. Counting a
+pitch as agreeing when it matches any note within one attack either side -- which
+is fair, since a ukulele rings for seconds -- would pass all three overlay
+videos. Against that stands a null model: draw a pitch at random from the
+instrument's range and it counts as explained anyway, 19% to 30% of the time at
++-1 and 26% to 44% at +-3, because a chord-dense page shows most of the scale
+nearby. Chance-corrected, the three overlay videos score 0.88 to 0.94 and
+Snowman -- which times badly, at 321ms jitter -- scores 0.91, sitting among them.
+
+So on pitch evidence alone a video that times well cannot be told from one that
+does not, and the strict threshold is what stands between the route and a
+confident wrong sheet. It is a judgement about which error costs more, and the
+project's answer elsewhere has been that a false accept is worse than a refusal.
+A hand-labelled no-marker clip would replace the judgement with a measurement,
+and is the only thing that would.
 
 ---
 
@@ -221,6 +277,14 @@ does not suit.
 against each other: 0.10 gives 98.94% overall, 0.20 gives 96.31%, 0.30 gives
 93.14%.
 
+**Counting a glyph's holes against the image rather than its ink.** The hole
+test that separates 3 from 8 compares a detected glyph to a rendered reference,
+and the reference is drawn on a roomy canvas while the glyph is cropped to its
+own bounds. A speck threshold taken from the image area therefore means two
+different things, and at bold weights it read the reference 8 as having one hole
+and declined every real 8. Caught only by testing every font on the candidate
+list; DejaVuSans, which the fixtures use, counts correctly either way.
+
 **Judging an attachment change on the timing harness alone.** It scores 36
 onsets across two clips and sees the cost without the benefit.
 
@@ -237,7 +301,26 @@ only string 3. It would reject the cleanest clip in the benchmark.
 - **Tab is read rather than the notation above it.** `find_string_lines` took the
   longest run of evenly spaced lines, and a notation staff has five to the tab's
   four. Notes were landing on `string_index` 4, which no ukulele has.
-- **Timing from the soundtrack**, with its own refusal gate.
+- **Only ink on the tab staff is read.** Notation above and lyrics below were
+  being read as frets, all landing on string 0.
+- **A 3 is told from an 8 by its holes.** Overlap alone cannot: a 3 sits inside
+  the 8 template. One video read 20 of 80 glyphs as the eighth fret.
+- **Timing from the soundtrack**, with its refusal gates.
+- **Bar lines**, so a soundtrack-timed sheet is divided into measures.
+
+## Verified before merging
+
+The five labelled clips are one renderer. The classifier and staff changes touch
+every video, so the branch was run against `main` over all 23 songs under
+`outputs/` -- same script, both versions, main in a worktree. **All 23 read
+identically**: same note counts, same fret and string histograms.
+
+That comparison is worth repeating for any change to `glyphs.py` or
+`page_digits.py`, and worth doing right. Two ways it can lie, both of which it
+did first time round: `outputs/*/tabs.json` is whenever that song was last run,
+not `main`, so it is not a baseline; and comparing note lists positionally counts
+tie-order as difference, because `sort(key=(time, string_index))` leaves notes
+sharing both in insertion order. Compare histograms, not positions.
 
 ## Fixed earlier, for context
 
